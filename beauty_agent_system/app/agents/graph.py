@@ -1,73 +1,67 @@
-"""LangGraph state machine wiring Supervisor + the three worker agents.
+"""LangGraph state machine for the Virtual Office.
 
-Graph shape (matches the spec's diagram):
+Graph shape:
 
-    classify (Supervisor) -> run_worker_agent -> validate_output (Supervisor) -> END
+    select_agents (Supervisor) -> dispatch_agents -> synthesize (Supervisor) -> END
 
-The Supervisor is the only router/validator; worker agents never call each
-other and never loop -- this graph has no cycles, which is what prevents the
-"agents arguing forever" failure mode called out in the spec.
+The Supervisor is the single entry point: it decides which of the 6 worker
+agents are relevant to the raw text the founder pasted, they run
+concurrently in ``dispatch_agents``, and the Supervisor synthesizes their
+individual outputs into ONE combined answer. No cycles, no agent-to-agent
+calls -- same acyclic shape as before, now with a dynamic (0-6 agent) fan
+out instead of a fixed 1-of-3 classification.
+
+LangGraph nodes here are pure state transforms; the actual async DB/LLM
+work happens in ``run_office_graph`` below (same pattern the old graph.py
+used), since LangGraph node signatures in this version are sync.
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import TypedDict
 
 from langgraph.graph import END, StateGraph
 from sqlalchemy.orm import Session
 
-from app.agents import lead_scraper, strategic_closer, support_agent
-from app.agents.state import AgentState
-from app.agents.supervisor import classify_intent, validate_output
+
+class OfficeState(TypedDict, total=False):
+    raw_text: str
+    selected_agents: list[str]
+    result: dict
+
+
+def _select_node(state: OfficeState) -> OfficeState:
+    return state
+
+
+def _dispatch_node(state: OfficeState) -> OfficeState:
+    return state
+
+
+def _synthesize_node(state: OfficeState) -> OfficeState:
+    return state
 
 
 def _make_graph():
-    graph = StateGraph(AgentState)
+    graph = StateGraph(OfficeState)
+    graph.add_node("select_agents", _select_node)
+    graph.add_node("dispatch_agents", _dispatch_node)
+    graph.add_node("synthesize", _synthesize_node)
 
-    graph.add_node("classify", classify_intent)
-    graph.add_node("run_worker_agent", _run_worker_agent_node)
-    graph.add_node("validate_output", validate_output)
-
-    graph.set_entry_point("classify")
-    graph.add_edge("classify", "run_worker_agent")
-    graph.add_edge("run_worker_agent", "validate_output")
-    graph.add_edge("validate_output", END)
+    graph.set_entry_point("select_agents")
+    graph.add_edge("select_agents", "dispatch_agents")
+    graph.add_edge("dispatch_agents", "synthesize")
+    graph.add_edge("synthesize", END)
 
     return graph.compile()
-
-
-def _run_worker_agent_node(state: AgentState) -> AgentState:
-    # Worker agents are async + need a DB session, both of which are threaded
-    # through ``state["extra"]`` by the caller (routers/webhook.py) rather
-    # than through LangGraph's sync node signature.
-    return state
 
 
 _COMPILED_GRAPH = _make_graph()
 
 
-async def run_graph(db: Session, initial_state: AgentState) -> AgentState:
-    """Runs classify -> worker agent -> validate, doing the actual async DB/LLM
-    work for the worker step outside of LangGraph's sync node call (LangGraph
-    nodes here are pure state transforms; the actual agent call happens here
-    so we can await it)."""
-    state = classify_intent(dict(initial_state))  # type: ignore[arg-type]
+async def run_office_graph(db: Session, raw_text: str) -> dict:
+    """Runs the Virtual Office graph for one founder submission. Delegates
+    the actual routing/execution/synthesis to app.agents.supervisor.run_office
+    -- see that module's docstring for the routing + synthesis rules."""
+    from app.agents.supervisor import run_office
 
-    agent_name = state.get("agent_name")
-    shop_id = state.get("shop_id")
-
-    if agent_name == "lead_scraper" and shop_id is not None:
-        result = await lead_scraper.analyze_lead(db, shop_id)
-        state["extra"] = {**state.get("extra", {}), "lead_scraper_result": result}
-    elif agent_name == "strategic_closer" and shop_id is not None:
-        result = await strategic_closer.draft_followup(db, shop_id)
-        state["extra"] = {**state.get("extra", {}), "strategic_closer_result": result}
-    elif agent_name == "support_agent":
-        result = await support_agent.answer_question(db, shop_id, state.get("incoming_message") or "")
-        state["kb_answer_found"] = bool(result.get("kb_answer_found"))
-        state["draft_message"] = result.get("answer")
-        state["extra"] = {**state.get("extra", {}), "support_agent_result": result}
-    else:
-        state["error"] = "no agent could handle this input"
-
-    state = validate_output(state)
-    return state
+    return await run_office(db, raw_text)

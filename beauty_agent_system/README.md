@@ -1,40 +1,67 @@
-# Beauty SaaS Growth & Support System
+# CSC Virtual Office
 
-A private multi-agent "virtual office" for one founder: it researches leads,
-drafts and queues outbound sales/follow-up messages for approval, answers
-support questions strictly from a knowledge base, and stays inside GitHub
-Models' rate limits automatically.
+A private single-page "virtual office" for one founder running CSC, an
+online booking SaaS for beauty salons (early PMF, 3 paying shops). The
+founder pastes ONE blob of raw information -- a Facebook comment, a lead
+conversation, a feature question, a note about an existing shop, feedback
+-- and gets back ONE synthesized answer: what was found, what the founder
+must do himself, and what the AI will keep doing on its own. It stays
+inside GitHub Models' rate limits automatically.
 
 This is a standalone FastAPI service. It lives in this directory
 (`beauty_agent_system/`) and does not use the Node/TypeScript tooling in the
 rest of this repo -- it is meant to be deployed to **Render**, backed by a
-**Neon** Postgres database, exactly as specified.
+**Neon** Postgres database.
 
 ## Architecture
 
 ```
-Chatwoot webhook -> Supervisor (classify) -> worker agent -> Supervisor (validate) ->
-    -> everything (KB-answered support questions, sales/follow-up, unclear cases)
-       -> pending_approvals (Founder reviews and sends the reply manually)
+Founder pastes raw text -> Supervisor selects relevant agents (0-6) ->
+    selected agents run concurrently -> Supervisor synthesizes ONE answer:
+        Key Findings + Action Plan (Founder must do / AI will do) +
+        inline draft approval (if Sales Assistant produced one)
 ```
 
-- **Agent 1 -- Lead Scraper & Analyst** (`app/agents/lead_scraper.py`): fetches
-  a lead's public Facebook page text before ever calling the LLM. If nothing
-  usable was fetched, the lead is marked `insufficient_data` and the LLM is
-  never called for that lead.
-- **Agent 2 -- Strategic Closer** (`app/agents/strategic_closer.py`): drafts
-  Day 1 / Day 4 / Day 7 / Ghosted follow-ups per the required table. Every
-  draft goes to `pending_approvals` -- this agent never sends anything itself.
-- **Agent 3 -- Support & Interactive Guide** (`app/agents/support_agent.py`):
-  answers only from `kb_articles` (RAG-only). No match -> opens a
-  `support_tickets` row instead of guessing.
-- **Agent 4 -- Supervisor** (`app/agents/supervisor.py`): the only router and
-  the only validator. Workers never talk to each other; there are no cycles
-  in the graph (`app/agents/graph.py`), so there is no infinite-loop failure
-  mode.
+There is no more multi-page admin dashboard (no separate Approvals / Leads /
+System Health / Weekly Insights / Knowledge Base pages) -- everything
+happens on the single page at `/`.
 
-All prompts are constants in `app/agents/prompts.py` -- editable without
-touching any logic.
+### The 6 specialist agents (`app/agents/`)
+
+- **Lead Hunter** (`lead_hunter.py`) -- extracts pain points from pasted
+  Facebook group/comment/lead-conversation text, matched against CSC's
+  ranked pain-point list in `app/business_context.py`.
+- **Sales Assistant** (`sales_assistant.py`) -- drafts ONE Messenger opening
+  line for an interested lead, anchored on their pain point. Never pitches
+  price on day one. Every draft always goes to `pending_approvals` -- this
+  agent never sends anything itself.
+- **Demo Agent** (`demo_agent.py`) -- preps the founder to answer feature/
+  package questions from a prospect, selling CSC's strengths (self-booking,
+  deposits, less chat load, 24h booking) rather than a feature laundry list.
+- **Onboarding Agent** (`onboarding_agent.py`) -- flags where a new shop got
+  stuck during setup/verification/first use, from whatever signal the
+  founder pasted.
+- **Customer Success Agent** (`customer_success_agent.py`) -- flags shops
+  that are live but not actually booking, or show churn-risk signals.
+- **Product Analyst Agent** (`product_analyst_agent.py`) -- groups feedback
+  into a short roadmap note, but only within Booking/Deposit/Schedule/
+  Customer Flow scope; explicitly refuses anything drifting into
+  POS/Stock/ERP/HR/big CRM territory (see `app/business_context.py`).
+
+### Supervisor (`app/agents/supervisor.py`)
+
+The single entry point and the only router. Routing is a cheap keyword
+heuristic per agent first (protects the LLM quota); only when nothing
+matches does it fall back to one LLM classification call. Selected agents
+run concurrently (`asyncio.gather`), then the Supervisor merges their
+`key_findings` / `founder_actions` / `ai_actions` / `missing_info` into one
+answer -- no LLM "synthesis" call, just deterministic merging, so the
+combined answer can't drift or reformat inconsistently.
+
+All prompts are constants in `app/agents/prompts.py`, all built on top of
+the shared `BUSINESS_CONTEXT` string in `app/business_context.py` -- edit
+that one file to change CSC's stage/priorities/off-limits list and every
+agent picks it up.
 
 ## Rate limiting (`app/rate_limiter.py`)
 
@@ -48,45 +75,33 @@ Every LLM call goes through `app/llm_client.py`, which enforces, in order:
 4. On a `429` from GitHub Models: reads `Retry-After` (falls back to
    exponential backoff), persists a `wake_at` timestamp in `system_state`,
    and logs `status=rate_limited` to `api_usage_log`. No immediate retry.
-   Every route into the system respects this sleep state, including the
-   daily follow-up scheduler.
 
 Unit tests: `beauty_agent_system/tests/test_rate_limiter.py`.
 
 ## Research-first (`app/research.py`)
 
-No agent may cite a stat, quote, or case study that wasn't actually fetched.
-`research_lead()` fetches a lead's own Facebook page URL and caches the
-result (with source + timestamp) in `research_cache`; on failure it returns
-`insufficient_data` and the caller must not fabricate a substitute. Agent 2's
-Day-4 case-study mention only fires if `get_verified_case_study()` finds a
-row explicitly marked `verified=True` -- there is no path for an unverified
-case study to reach a customer message.
+No agent may cite a stat, quote, or case study that wasn't actually
+verified. Sales Assistant only cites a case study via
+`get_verified_case_study()`, which only ever returns a row explicitly
+marked `verified=True` in `research_cache` -- there is no path for an
+unverified case study to reach a customer message.
 
-**Wiring in a real search API:** the default provider only fetches a lead's
-own page. To add real web search (e.g. for market research beyond the lead's
-own page), implement a new function in `app/research.py` that calls your
-search API of choice, cache its result the same way, and mark it
-`verified=True` only when you're confident in the source.
+## Self-improvement
 
-## Self-improvement (`app/scheduler.py`, Weekly Insights page)
+Folded directly into the next synthesized answer instead of a separate
+"Weekly Insights" page: `supervisor._recent_sales_tone_note()` checks the
+last 7 days of `agent_feedback` tied to Sales Assistant drafts, and if the
+rejection rate is high, adds a Key Finding suggesting a tone change on the
+very next submission -- no separate page, no scheduled job required.
 
-Every Monday, `run_weekly_insights()` aggregates the last 7 days of
-`agent_feedback` into a plain-language summary + one recommendation, written
-to `weekly_insights`. Per the spec, **nothing is ever auto-applied** -- the
-Founder reviews the recommendation on the dashboard and clicks "Mark as
-applied" by hand, which only records that they saw it; changing an actual
-prompt still means editing `app/agents/prompts.py` yourself.
+## The single page (`/`, `app/routers/office.py`)
 
-## Admin Dashboard
-
-Server-rendered (Jinja2) at `/admin/*`, responsive for phone and desktop:
-
-- `/admin/approvals` -- Pending Approvals queue (Approve / Edit+Send / Reject, shows AI reasoning)
-- `/admin/leads` -- Leads Overview with status filter
-- `/admin/system-health` -- Active/Sleeping status, today's request/error/rate-limit counts
-- `/admin/insights` -- Weekly Insights
-- `/admin/knowledge-base` -- Knowledge Base Manager + open support tickets
+- A textarea to paste raw text + "ส่งให้ Virtual Office วิเคราะห์".
+- The latest synthesized result (Key Findings / Action Plan / missing info),
+  persisted in `office_runs` so a page reload doesn't lose it.
+- "ข้อความร่างที่รอตรวจ" -- any pending Sales Assistant draft, with inline
+  Approve / Edit+use / Reject buttons (writes to `pending_approvals` +
+  `agent_feedback`, same tables the self-improvement note reads from).
 
 ## Environment variables
 
@@ -97,27 +112,19 @@ Replit project, the two secrets below are managed as Replit Secrets instead
 - `NEON_DATABASE_URL` -- your Neon Postgres connection string
 - `GITHUB_MODELS_TOKEN` -- a GitHub token with the "Models" permission
 
-Chatwoot is **stubbed** until you have an account (`CHATWOOT_ENABLED=false`).
-While stubbed, outbound sends are logged and appended to
-`leads.conversation_history` instead of calling the real API, so the whole
-approve -> send flow is testable end-to-end today. Flip
-`CHATWOOT_ENABLED=true` and fill in the four `CHATWOOT_*` values once you
-have a Chatwoot account -- no code changes needed.
-
 ## Running locally in Replit (for development/testing)
 
 ```bash
 cd beauty_agent_system
-alembic upgrade head          # creates all tables in Neon
+alembic upgrade head          # creates/updates all tables in Neon
 python run.py                 # starts the API on $PORT (defaults to 8000)
 ```
 
-Send a test webhook:
+Try it:
 
 ```bash
-curl -X POST localhost:8000/webhooks/chatwoot \
-  -H "Content-Type: application/json" \
-  -d '{"content": "ราคาเท่าไหร่คะ", "sender": {"name": "ร้านเล็บทดสอบ"}, "conversation": {"id": "1"}}'
+curl -X POST localhost:8000/run --data-urlencode \
+  "raw_text=มีคนคอมเมนต์ในกลุ่ม Facebook ร้านทำเล็บว่าเทลูกค้าประจำเพราะตอบแชทไม่ทัน ทักมาถามราคาแพ็กเกจด้วย"
 ```
 
 Run the rate limiter unit tests:
@@ -138,15 +145,8 @@ pytest tests/test_rate_limiter.py -v
    - Root directory: `beauty_agent_system`
    - Build command: `pip install -r requirements.txt`
    - Start command: `alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT`
-   - Add all variables from `.env.example` under Render's Environment tab
-     (set `CHATWOOT_ENABLED=true` once you have a Chatwoot account).
-4. **Chatwoot**: point your Chatwoot inbox's webhook URL at
-   `https://<your-render-service>.onrender.com/webhooks/chatwoot`, and set
-   `CHATWOOT_WEBHOOK_SECRET` to match Chatwoot's webhook signing secret.
-5. Render's free/starter tiers spin down when idle, which will pause the
-   scheduler (daily follow-ups, weekly insights) until the next request wakes
-   the service -- use a paid always-on instance if follow-up timing needs to
-   be exact.
+   - Add `NEON_DATABASE_URL` and `GITHUB_MODELS_TOKEN` under Render's
+     Environment tab.
 
 A `requirements.txt` is included alongside this README for Render's build
 step; if you add a dependency locally, regenerate it with
