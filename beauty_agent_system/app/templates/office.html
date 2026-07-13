@@ -23,76 +23,26 @@
     </form>
   </section>
 
-  <!-- ── PROGRESS (during streaming) ──────────────────────────────────── -->
+  <!-- ── PROGRESS (during streaming: thinking cloud + agent typing bubbles + handoff) -->
   <div id="progress-area" class="progress-area" hidden>
+    <div id="thinking-cloud" class="thinking-cloud" hidden>
+      <span class="thinking-cloud__icon">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>
+      </span>
+      <span id="thinking-cloud__text">กำลังคิด...</span>
+      <span class="thinking-dots"><i></i><i></i><i></i></span>
+    </div>
     <div class="progress-bar-wrap"><div id="progress-bar" class="progress-bar"></div></div>
     <div id="progress-agents" class="progress-agents"></div>
   </div>
 
-  <!-- ── RESULT (streaming final + localStorage restore) ───────────────── -->
+  <!-- ── HISTORY THREAD (grows downward like a chat -- hydrated from /runs/recent
+       on load, then live SSE results get appended so a refresh never loses it) -->
+  <div id="history-area" class="history-area"></div>
+
+  <!-- ── LEGACY RESULT MOUNT (kept for the very first paint before JS hydrates) -->
   <div id="result-area"></div>
-
-  <!-- ── STATIC FALLBACK (page load from DB, hidden once JS runs) ──────── -->
-  <div id="static-result" class="{% if not latest_run %}hidden{% endif %}">
-    {% if latest_run %}
-    <div class="result-card">
-      <div class="result-card__header">
-        <span class="result-card__title">ผลวิเคราะห์ล่าสุด</span>
-        <time class="result-card__time">{{ latest_run.created_at.strftime('%d/%m/%y %H:%M') }}</time>
-      </div>
-
-      {% if latest_run.questions %}
-      <div class="result-section result-section--attention">
-        <div class="section-label">ทีม AI มีคำถาม</div>
-        {% for q in latest_run.questions %}
-        <p><strong>{{ q.label }}</strong>: {{ q.question }}</p>
-        {% endfor %}
-        <form method="post" action="/run/continue" class="stacked-form" style="margin-top:10px">
-          <input type="hidden" name="previous_run_id" value="{{ latest_run.id }}" />
-          <textarea name="answer" rows="2" placeholder="ตอบคำถามด้านบน..." required></textarea>
-          <button type="submit" class="btn btn--primary btn--sm">ส่งคำตอบ</button>
-        </form>
-      </div>
-      {% endif %}
-
-      {% if latest_run.key_findings %}
-      <div class="result-section">
-        <div class="section-label">สิ่งที่วิเคราะห์พบ</div>
-        <ul class="result-list">{% for f in latest_run.key_findings %}<li>{{ f }}</li>{% endfor %}</ul>
-      </div>
-      {% endif %}
-
-      {% if latest_run.founder_actions %}
-      <div class="result-section">
-        <div class="section-label">ต้องทำตอนนี้</div>
-        <ul class="task-list">
-          {% for a in latest_run.founder_actions %}
-          {% if a is mapping %}
-          <li class="task-item">
-            <details class="task-details">
-              <summary class="task-summary">
-                <span class="task-num">{{ loop.index }}</span>
-                <span class="task-body">{{ a.action }}</span>
-              </summary>
-              <div class="task-detail-body">
-                {% if a.goal_metric %}<div class="task-detail-row"><span class="task-detail-row__label">เป้าหมาย</span><span class="task-detail-row__val">{{ a.goal_metric }}</span></div>{% endif %}
-                {% if a.target_audience %}<div class="task-detail-row"><span class="task-detail-row__label">กลุ่มเป้าหมาย</span><span class="task-detail-row__val">{{ a.target_audience }}</span></div>{% endif %}
-                {% if a.where_and_how_many %}<div class="task-detail-row"><span class="task-detail-row__label">ที่ไหน/กี่จุด</span><span class="task-detail-row__val">{{ a.where_and_how_many }}</span></div>{% endif %}
-                {% if a.reasoning %}<div class="task-detail-row"><span class="task-detail-row__label">ทำไมถึงจะได้ผล</span><span class="task-detail-row__val">{{ a.reasoning }}</span></div>{% endif %}
-                {% if a.engagement_tactic %}<div class="task-detail-row"><span class="task-detail-row__label">วิธีกระตุ้นปฏิสัมพันธ์</span><span class="task-detail-row__val">{{ a.engagement_tactic }}</span></div>{% endif %}
-              </div>
-            </details>
-          </li>
-          {% else %}
-          <li class="task-item"><span class="task-num">{{ loop.index }}</span><span class="task-body">{{ a }}</span></li>
-          {% endif %}
-          {% endfor %}
-        </ul>
-      </div>
-      {% endif %}
-    </div>
-    {% endif %}
-  </div>
+  <div id="static-result" class="hidden"></div>
 
   <!-- ── PENDING APPROVALS ──────────────────────────────────────────────── -->
   {% if pending_approvals %}

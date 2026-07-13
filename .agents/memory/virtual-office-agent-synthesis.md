@@ -51,3 +51,26 @@ wording) are also worth deduping with a cheap `difflib.SequenceMatcher`
 ratio threshold (~0.7) on the text after the `[Agent Label] ` prefix --
 catches verbatim/near-verbatim repeats, but is not true semantic dedup, so
 some paraphrased overlap across agents will still get through.
+
+## Feeding real founder feedback back into future runs
+
+The founder wants the system to "grow" from real accepted/rejected outcomes
+instead of resetting every time. Pattern used: store outcome ("accepted"/
+"rejected") + an optional free-text note directly on the run record itself
+(not a separate table), then at synthesis time query the last 7 days of
+outcomes and, if rejections are the majority of a large-enough sample,
+append one more `[Supervisor] ...` line to key_findings summarizing the
+rejection rate plus the founder's own notes verbatim (not re-summarized by
+an LLM -- the founder's literal wording carries the real "why").
+
+**Why:** folding the lesson into the next round's Key Findings (rather than
+a separate "Weekly Insights" page or a fine-tune/RAG pipeline) means every
+future run's own LLM calls see the recent feedback as ordinary context with
+no new infra, and it's exactly the same trick already used for the
+narrower Sales-Assistant-draft-approval feedback loop -- keeping both
+consistent matters more than inventing a fancier mechanism.
+
+**How to apply:** when adding a new feedback surface to this app, prefer
+adding outcome/note columns to the existing per-interaction record over a
+new join table, and prefer folding a "recent pattern" note into
+key_findings over building a separate learning/analytics page.

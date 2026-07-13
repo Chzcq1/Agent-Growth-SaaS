@@ -35,3 +35,9 @@ they want it isolated (different deploy target/DB/provider), scaffold it as
 a sibling top-level directory with its own lockfile/venv, its own
 requirements file for the external host, and its own manually configured
 workflow -- do not try to fold it into the existing workspace.
+
+Because it's not a registered artifact, the `Screenshot` tool's `appPreview`
+source can't target it (no `artifactDirName`), and `externalUrl` against
+`$REPLIT_DEV_DOMAIN` also fails (proxy 404s — that domain routes to
+registered artifacts only). Verify UI/behavior changes with `curl` against
+`localhost:<port>` instead (page HTML, SSE event stream, JSON endpoints).

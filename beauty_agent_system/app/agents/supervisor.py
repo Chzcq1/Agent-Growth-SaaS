@@ -173,6 +173,34 @@ def _recent_sales_tone_note(db: Session) -> str | None:
     return None
 
 
+def _recent_run_feedback_note(db: Session) -> str | None:
+    """General self-improvement across ALL agents, not just Sales Assistant
+    drafts: the founder can mark any run's whole output as 'accepted' or
+    'rejected' (with an optional note) straight from the result card. This
+    folds recent rejections -- with their notes, which carry the real
+    'why' -- into the next round's Key Findings, the same way
+    _recent_sales_tone_note already does for the narrower approval flow.
+    Both notes can appear together; they cover different signals."""
+    week_ago = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=7)
+    rows = db.scalars(
+        select(OfficeRun)
+        .where(OfficeRun.outcome.is_not(None))
+        .where(OfficeRun.created_at >= week_ago)
+    ).all()
+    if len(rows) < 3:
+        return None
+    rejected = [r for r in rows if r.outcome == "rejected"]
+    if len(rejected) / len(rows) <= 0.5:
+        return None
+    notes = [r.founder_note for r in rejected if r.founder_note]
+    notes_text = "; ".join(notes[-3:]) if notes else "(ผู้ก่อตั้งไม่ได้ระบุเหตุผลเพิ่มเติม)"
+    return (
+        f"ข้อสังเกตจาก 7 วันที่ผ่านมา: ผลลัพธ์ของทีม AI ถูกผู้ก่อตั้งบอกว่า 'ไม่เวิร์ก' "
+        f"{len(rejected)}/{len(rows)} ครั้ง -- เหตุผลที่ผู้ก่อตั้งให้ไว้: {notes_text} "
+        f"-- ควรนำเหตุผลนี้มาปรับแนวคิด/มุมมองก่อนตอบครั้งนี้"
+    )
+
+
 def _merge_results(results: list[dict]) -> tuple[list[str], list[str], list[str], list[str], list[str]]:
     key_findings: list[str] = []
     content_ideas: list[str] = []
@@ -315,6 +343,9 @@ async def run_office(db: Session, raw_text: str) -> dict:
     tone_note = _recent_sales_tone_note(db)
     if tone_note:
         key_findings.append(f"[Supervisor] {tone_note}")
+    feedback_note = _recent_run_feedback_note(db)
+    if feedback_note:
+        key_findings.append(f"[Supervisor] {feedback_note}")
 
     questions, team_notes = _collect_questions_and_notes(list(results_by_agent.values()))
 
@@ -532,6 +563,9 @@ async def stream_run_office(db: Session, raw_text: str):
     tone_note = _recent_sales_tone_note(db)
     if tone_note:
         key_findings.append(f"[Supervisor] {tone_note}")
+    feedback_note = _recent_run_feedback_note(db)
+    if feedback_note:
+        key_findings.append(f"[Supervisor] {feedback_note}")
 
     questions, team_notes = _collect_questions_and_notes(
         list(results_by_agent.values())

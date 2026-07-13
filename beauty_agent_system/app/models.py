@@ -130,6 +130,11 @@ class OfficeRun(Base):
     missing_info: Mapped[list] = mapped_column(JSON, default=list)
     approval_id: Mapped[int | None] = mapped_column(ForeignKey("pending_approvals.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    # Founder's own reaction to this run's output ("accepted"/"rejected" +
+    # optional note) -- the raw signal fed back into future runs so the
+    # system improves from real outcomes instead of resetting every time.
+    outcome: Mapped[str | None] = mapped_column(String(50))
+    founder_note: Mapped[str | None] = mapped_column(Text)
 
 
 class SystemState(Base):

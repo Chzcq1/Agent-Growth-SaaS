@@ -1,7 +1,7 @@
 "use strict";
 
 // ─── Virtual Office — Streaming UI ───────────────────────────────────────────
-const LS_KEY = "vo_last_result";
+const DRAFT_KEY = "vo_draft_input";
 
 // ── SVG icon library (Lucide-style, no emoji) ─────────────────────────────────
 const IC = {
@@ -20,6 +20,10 @@ const IC = {
   clock:   `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`,
   img:     `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`,
   arrow:   `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>`,
+  chevron: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`,
+  thumbUp: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 10v12"/><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z"/></svg>`,
+  thumbDown: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 14V2"/><path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z"/></svg>`,
+  paper:   `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`,
 };
 
 // Agent icon keys → SVG (for progress dots)
@@ -33,32 +37,58 @@ const AGENT_ICONS = {
   content_strategist:     IC.layers,
 };
 
+let currentRunId = null; // run_id of the in-flight SSE run, once known
+
 document.addEventListener("DOMContentLoaded", () => {
   const form = document.getElementById("office-form");
   if (!form) return;
 
-  const staticEl = document.getElementById("static-result");
-  if (staticEl) staticEl.classList.add("hidden");
-
-  const saved = localStorage.getItem(LS_KEY);
-  if (saved) {
-    try { renderFinal(JSON.parse(saved)); } catch (_) { localStorage.removeItem(LS_KEY); }
-  }
+  restoreDraft();
+  hydrateHistory();
 
   form.addEventListener("submit", handleSubmit);
+
+  const textarea = document.getElementById("raw-text-input");
+  textarea.addEventListener("input", () => {
+    localStorage.setItem(DRAFT_KEY, textarea.value);
+  });
 });
+
+// ─── Draft persistence (typed input must survive a refresh) ──────────────────
+function restoreDraft() {
+  const textarea = document.getElementById("raw-text-input");
+  const saved = localStorage.getItem(DRAFT_KEY);
+  if (saved && !textarea.value.trim()) textarea.value = saved;
+}
+
+// ─── History hydration (DB is the source of truth -- a refresh never loses
+// the thread; every run the founder has ever submitted stays visible) ─────────
+async function hydrateHistory() {
+  try {
+    const resp = await fetch("/runs/recent");
+    if (!resp.ok) return;
+    const runs = await resp.json();
+    for (const run of runs) {
+      appendRunToThread(run, { live: false });
+    }
+    scrollThreadToBottom();
+  } catch (_) { /* history is a nice-to-have; ignore failures */ }
+}
 
 // ─── Form submit ──────────────────────────────────────────────────────────────
 async function handleSubmit(e) {
   e.preventDefault();
   const form = e.currentTarget;
-  const rawText = form.querySelector("#raw-text-input").value.trim();
+  const textarea = form.querySelector("#raw-text-input");
+  const rawText = textarea.value.trim();
   if (!rawText) return;
 
+  appendUserBubble(rawText);
+  textarea.value = "";
+  localStorage.removeItem(DRAFT_KEY);
+
   setSubmitting(true);
-  clearResult();
   showProgress();
-  document.getElementById("static-result")?.classList.add("hidden");
 
   const fd = new FormData();
   fd.append("raw_text", rawText);
@@ -68,7 +98,7 @@ async function handleSubmit(e) {
     if (!resp.ok) throw new Error(`Server error ${resp.status}`);
     await readSSE(resp);
   } catch (err) {
-    appendToResult(errorBanner(err.message || String(err)));
+    appendToThread(errorBanner(err.message || String(err)));
   } finally {
     hideProgress();
     setSubmitting(false);
@@ -97,28 +127,53 @@ async function readSSE(resp) {
 // ─── Event dispatch ───────────────────────────────────────────────────────────
 function handleEvent(ev) {
   switch (ev.type) {
-    case "planning":   updateProgressAgents(ev.plan_trace?.assignments || []); break;
+    case "supervisor_thinking": showThinkingCloud(ev.text || "กำลังคิด..."); break;
+    case "planning":   hideThinkingCloud(); updateProgressAgents(ev.plan_trace?.assignments || []); break;
+    case "agent_start": markAgentTyping(ev.agent); break;
     case "agent_done": markAgentDone(ev.agent); break;
     case "final":      onFinal(ev); break;
-    case "error":      appendToResult(errorBanner(ev.message)); break;
+    case "error":      appendToThread(errorBanner(ev.message)); break;
   }
 }
 
 // ─── Progress area ────────────────────────────────────────────────────────────
 function showProgress() { document.getElementById("progress-area").hidden = false; }
-function hideProgress() { document.getElementById("progress-area").hidden = true; }
+function hideProgress() {
+  document.getElementById("progress-area").hidden = true;
+  hideThinkingCloud();
+}
+
+function showThinkingCloud(text) {
+  const cloud = document.getElementById("thinking-cloud");
+  document.getElementById("thinking-cloud__text").textContent = text;
+  cloud.hidden = false;
+}
+function hideThinkingCloud() {
+  document.getElementById("thinking-cloud").hidden = true;
+}
 
 function updateProgressAgents(assignments) {
   const container = document.getElementById("progress-agents");
   container.innerHTML = "";
   for (const a of assignments) {
     const el = document.createElement("span");
-    el.className = "progress-agent progress-agent--working";
+    el.className = "progress-agent progress-agent--queued";
     el.id = `pa-${a.agent}`;
     const icon = AGENT_ICONS[a.agent] || IC.cpu;
-    el.innerHTML = `<span class="agent-dot"></span><span class="agent-icon">${icon}</span>${esc(a.label)}`;
+    el.innerHTML = `
+      <span class="agent-dot"></span>
+      <span class="agent-icon">${icon}</span>
+      <span class="agent-label">${esc(a.label)}</span>
+      <span class="agent-typing"><i></i><i></i><i></i></span>`;
     container.appendChild(el);
   }
+}
+
+function markAgentTyping(agent) {
+  const el = document.getElementById(`pa-${agent}`);
+  if (!el) return;
+  el.classList.remove("progress-agent--queued");
+  el.classList.add("progress-agent--working");
 }
 
 function markAgentDone(agent) {
@@ -128,20 +183,75 @@ function markAgentDone(agent) {
   el.classList.add("progress-agent--done");
   el.querySelector(".agent-dot").innerHTML = IC.done;
   el.querySelector(".agent-dot").classList.add("agent-dot--done");
+  flyHandoffPaper(el);
 }
 
-// ─── Result rendering ─────────────────────────────────────────────────────────
+// ─── "Handoff" animation: a little paper flies from the agent chip that just
+// finished up toward the thinking-cloud/Supervisor spot, so work visibly
+// passes hand-to-hand instead of just silently ticking a checkbox ──────────────
+function flyHandoffPaper(sourceEl) {
+  const target = document.getElementById("thinking-cloud") || document.getElementById("progress-bar-wrap");
+  if (!sourceEl || !target) return;
+  const srcRect = sourceEl.getBoundingClientRect();
+  const tgtRect = target.getBoundingClientRect();
+
+  const paper = document.createElement("div");
+  paper.className = "handoff-paper";
+  paper.innerHTML = IC.paper;
+  paper.style.left = `${srcRect.left + srcRect.width / 2}px`;
+  paper.style.top = `${srcRect.top + srcRect.height / 2}px`;
+  document.body.appendChild(paper);
+
+  const dx = (tgtRect.left + tgtRect.width / 2) - (srcRect.left + srcRect.width / 2);
+  const dy = (tgtRect.top + tgtRect.height / 2) - (srcRect.top + srcRect.height / 2);
+
+  requestAnimationFrame(() => {
+    paper.style.transform = `translate(${dx}px, ${dy}px) rotate(340deg) scale(0.4)`;
+    paper.style.opacity = "0";
+  });
+  setTimeout(() => paper.remove(), 750);
+}
+
+// ─── Chat thread (history) ─────────────────────────────────────────────────────
+function appendUserBubble(text) {
+  const bubble = el_("div", "chat-bubble chat-bubble--user");
+  bubble.innerHTML = `<span class="chat-bubble__icon">${IC.user}</span><span class="chat-bubble__text"></span>`;
+  bubble.querySelector(".chat-bubble__text").textContent = text;
+  appendToThread(bubble);
+}
+
 function onFinal(ev) {
-  localStorage.setItem(LS_KEY, JSON.stringify(ev));
-  renderFinal(ev);
+  currentRunId = ev.run_id;
+  appendRunToThread(ev, { live: true });
 }
 
-function renderFinal(ev) {
+function appendRunToThread(run, { live }) {
+  // If this is the live in-flight run, the user bubble is already appended
+  // by handleSubmit(); for history hydration, show both bubble + card.
+  if (!live && run.raw_text) appendUserBubble(run.raw_text);
+  const card = buildResultCard(run, { live });
+  appendToThread(card);
+}
+
+function appendToThread(el) {
+  const area = document.getElementById("history-area");
+  if (area) {
+    area.appendChild(el);
+    el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+}
+
+function scrollThreadToBottom() {
+  window.scrollTo({ top: document.body.scrollHeight, behavior: "auto" });
+}
+
+// ─── Result card builder ───────────────────────────────────────────────────────
+function buildResultCard(ev, { live } = {}) {
   const {
     key_findings = [], content_ideas = [], founder_actions = [],
     ai_actions = [], missing_info = [], questions = [],
     content_plan = [], target_profile = "", pitch_timing = "", product_pitch = "",
-    draft, agents_run = [], run_id,
+    draft, agents_run = [], run_id, outcome = null, founder_note = null,
   } = ev;
 
   const card = el_("div", "result-card");
@@ -150,7 +260,7 @@ function renderFinal(ev) {
   const tags = agents_run.map(l => `<span class="tag">${esc(l)}</span>`).join("");
   card.innerHTML = `
     <div class="result-card__header">
-      <span class="result-card__title">${IC.layers} ผลวิเคราะห์ ${tags}</span>
+      <span class="result-card__title">${IC.layers} ผลวิเคราะห์<span class="result-card__tags">${tags}</span></span>
     </div>`;
 
   // ── 1. Questions ──────────────────────────────────────────────────────────
@@ -214,10 +324,11 @@ function renderFinal(ev) {
     card.appendChild(sec);
   }
 
-  // ── 2. Key findings ───────────────────────────────────────────────────────
+  // ── 2. Key findings (condensed -- founder said 3 pages of bullets is too
+  // much most of the time, so show the top few and let them expand) ─────────
   if (key_findings.length) {
     const sec = section(IC.chart, "สิ่งที่วิเคราะห์พบ");
-    sec.appendChild(ul_(key_findings, "result-list"));
+    sec.appendChild(condensedList(key_findings, "result-list", 3));
     card.appendChild(sec);
   }
 
@@ -225,14 +336,12 @@ function renderFinal(ev) {
   if (content_plan.length || target_profile || pitch_timing || product_pitch) {
     const sec = section(IC.layers, "แผนโพสต์ Facebook — ขั้นตอน", "result-section--plan");
 
-    // Target profile chip
     if (target_profile) {
       const chip = el_("div", "profile-chip");
       chip.innerHTML = `<span class="chip-icon">${IC.target}</span><strong>กลุ่มเป้าหมาย:</strong> ${esc(target_profile)}`;
       sec.appendChild(chip);
     }
 
-    // Steps
     for (const step of content_plan) {
       const stepEl = el_("div", "plan-step");
 
@@ -245,6 +354,12 @@ function renderFinal(ev) {
       if (step.group) {
         const row = el_("div", "plan-row");
         row.innerHTML = `<span class="plan-row__label">${IC.target} กลุ่ม</span><span class="plan-row__val">${esc(step.group)}</span>`;
+        stepEl.appendChild(row);
+      }
+
+      if (step.target_audience) {
+        const row = el_("div", "plan-row");
+        row.innerHTML = `<span class="plan-row__label">${IC.user} เป้าหมาย</span><span class="plan-row__val">${esc(step.target_audience)}</span>`;
         stepEl.appendChild(row);
       }
 
@@ -276,9 +391,15 @@ function renderFinal(ev) {
         stepEl.appendChild(row);
       }
 
-      if (step.goal) {
+      if (step.goal_metric || step.goal) {
         const row = el_("div", "plan-row");
-        row.innerHTML = `<span class="plan-row__label">${IC.arrow} เป้า</span><span class="plan-row__val">${esc(step.goal)}</span>`;
+        row.innerHTML = `<span class="plan-row__label">${IC.arrow} เป้า</span><span class="plan-row__val">${esc(step.goal_metric || step.goal)}</span>`;
+        stepEl.appendChild(row);
+      }
+
+      if (step.engagement_tactic) {
+        const row = el_("div", "plan-row");
+        row.innerHTML = `<span class="plan-row__label">${IC.bulb} กระตุ้นปฏิสัมพันธ์</span><span class="plan-row__val">${esc(step.engagement_tactic)}</span>`;
         stepEl.appendChild(row);
       }
 
@@ -291,22 +412,18 @@ function renderFinal(ev) {
       sec.appendChild(stepEl);
     }
 
-    // Pitch timing & product pitch
     if (pitch_timing || product_pitch) {
       const pitchWrap = el_("div", "pitch-wrap");
-
       if (pitch_timing) {
         const row = el_("div", "pitch-row");
         row.innerHTML = `<div class="pitch-row__label">${IC.clock} เสนอขายเมื่อไหร่</div><div class="pitch-row__val">${esc(pitch_timing)}</div>`;
         pitchWrap.appendChild(row);
       }
-
       if (product_pitch) {
         const row = el_("div", "pitch-row");
         row.innerHTML = `<div class="pitch-row__label">${IC.msg} อธิบายระบบ</div><div class="pitch-row__val">${esc(product_pitch)}</div>`;
         pitchWrap.appendChild(row);
       }
-
       sec.appendChild(pitchWrap);
     }
 
@@ -316,13 +433,7 @@ function renderFinal(ev) {
   // ── 4. Content ideas ──────────────────────────────────────────────────────
   if (content_ideas.length) {
     const sec = section(IC.bulb, "ไอเดียคอนเทนต์เพิ่มเติม", "result-section--ideas");
-    const list = el_("ul", "ideas-list");
-    for (const idea of content_ideas) {
-      const li = document.createElement("li");
-      li.innerHTML = `<span class="idea-dot"></span><span>${esc(idea)}</span>`;
-      list.appendChild(li);
-    }
-    sec.appendChild(list);
+    sec.appendChild(condensedList(content_ideas, "ideas-list", 3, true));
     card.appendChild(sec);
   }
 
@@ -385,7 +496,7 @@ function renderFinal(ev) {
   // ── 7. AI actions ─────────────────────────────────────────────────────────
   if (ai_actions.length) {
     const sec = section(IC.cpu, "AI จะทำต่อเอง");
-    sec.appendChild(ul_(ai_actions, "result-list result-list--ai"));
+    sec.appendChild(condensedList(ai_actions, "result-list result-list--ai", 3));
     card.appendChild(sec);
   }
 
@@ -393,12 +504,122 @@ function renderFinal(ev) {
   const realMissing = missing_info.filter(m => !m.includes("AI ไม่พร้อมใช้งาน"));
   if (realMissing.length) {
     const sec = section(IC.alert, "ข้อมูลที่ยังขาด");
-    sec.appendChild(ul_(realMissing, "result-list result-list--warn"));
+    sec.appendChild(condensedList(realMissing, "result-list result-list--warn", 3));
     card.appendChild(sec);
   }
 
-  clearResult();
-  appendToResult(card);
+  // ── 9. Feedback (accept/reject → feeds back into future runs) ─────────────
+  if (run_id) {
+    card.appendChild(buildFeedbackRow(run_id, outcome, founder_note));
+  }
+
+  return card;
+}
+
+// ─── Condensed list: show first N items, "ดูเพิ่มเติม" toggles the rest ────────
+function condensedList(items, className, visibleCount, asIdeas = false) {
+  const wrap = el_("div", "condensed-list-wrap");
+  const list = el_("ul", className);
+
+  const renderItem = (item) => {
+    const li = document.createElement("li");
+    if (asIdeas) {
+      li.innerHTML = `<span class="idea-dot"></span><span></span>`;
+      li.querySelector("span:last-child").textContent = item;
+    } else {
+      li.textContent = item;
+    }
+    return li;
+  };
+
+  items.slice(0, visibleCount).forEach(item => list.appendChild(renderItem(item)));
+  wrap.appendChild(list);
+
+  if (items.length > visibleCount) {
+    const rest = el_("ul", `${className} condensed-list__rest`);
+    rest.hidden = true;
+    items.slice(visibleCount).forEach(item => rest.appendChild(renderItem(item)));
+    wrap.appendChild(rest);
+
+    const toggle = el_("button", "condensed-list__toggle");
+    toggle.type = "button";
+    const remaining = items.length - visibleCount;
+    toggle.innerHTML = `${IC.chevron} ดูเพิ่มเติมอีก ${remaining} ข้อ`;
+    toggle.addEventListener("click", () => {
+      const expanded = !rest.hidden;
+      rest.hidden = expanded;
+      toggle.classList.toggle("condensed-list__toggle--open", !expanded);
+      toggle.innerHTML = expanded
+        ? `${IC.chevron} ดูเพิ่มเติมอีก ${remaining} ข้อ`
+        : `${IC.chevron} ย่อกลับ`;
+    });
+    wrap.appendChild(toggle);
+  }
+
+  return wrap;
+}
+
+// ─── Feedback row: this run's output — accepted / rejected + optional note ────
+function buildFeedbackRow(runId, outcome, founderNote) {
+  const wrap = el_("div", "feedback-row");
+  if (outcome) {
+    wrap.classList.add("feedback-row--done");
+    const label = outcome === "accepted" ? "คุณบอกว่าใช้ได้" : "คุณบอกว่าไม่เวิร์ก";
+    const icon = outcome === "accepted" ? IC.thumbUp : IC.thumbDown;
+    wrap.innerHTML = `<span class="feedback-row__done">${icon} ${label}</span>`;
+    if (founderNote) {
+      wrap.innerHTML += `<span class="feedback-row__note">"${esc(founderNote)}"</span>`;
+    }
+    return wrap;
+  }
+
+  wrap.innerHTML = `<span class="feedback-row__label">ผลลัพธ์นี้เป็นยังไงบ้าง? (ช่วยให้ทีม AI เรียนรู้ต่อไป)</span>`;
+  const btnRow = el_("div", "feedback-row__btns");
+  const noteInput = el_("input", "feedback-row__note-input");
+  noteInput.type = "text";
+  noteInput.placeholder = "โน้ตสั้นๆ (ไม่บังคับ) เช่น ลูกค้าตอบรับ/เงียบ/ปฏิเสธเพราะอะไร";
+  noteInput.hidden = true;
+
+  const submitFeedback = async (outcomeVal, btn) => {
+    btn.disabled = true;
+    const fd = new FormData();
+    fd.append("outcome", outcomeVal);
+    fd.append("founder_note", noteInput.value.trim());
+    try {
+      await fetch(`/runs/${runId}/feedback`, { method: "POST", body: fd });
+      wrap.classList.add("feedback-row--done");
+      const label = outcomeVal === "accepted" ? "บันทึกแล้ว — ใช้ได้" : "บันทึกแล้ว — ไม่เวิร์ก";
+      const icon = outcomeVal === "accepted" ? IC.thumbUp : IC.thumbDown;
+      wrap.innerHTML = `<span class="feedback-row__done">${icon} ${label}</span>`;
+    } catch (_) {
+      btn.disabled = false;
+    }
+  };
+
+  const upBtn = el_("button", "feedback-btn feedback-btn--up");
+  upBtn.type = "button";
+  upBtn.innerHTML = `${IC.thumbUp} ใช้ได้`;
+  upBtn.addEventListener("click", () => submitFeedback("accepted", upBtn));
+
+  const downBtn = el_("button", "feedback-btn feedback-btn--down");
+  downBtn.type = "button";
+  downBtn.innerHTML = `${IC.thumbDown} ไม่เวิร์ก`;
+  downBtn.addEventListener("click", () => { noteInput.hidden = false; noteInput.focus(); });
+  downBtn.addEventListener("dblclick", () => submitFeedback("rejected", downBtn));
+
+  const sendNoteBtn = el_("button", "feedback-btn feedback-btn--sm");
+  sendNoteBtn.type = "button";
+  sendNoteBtn.textContent = "ส่ง";
+  sendNoteBtn.hidden = true;
+  noteInput.addEventListener("input", () => { sendNoteBtn.hidden = false; });
+  sendNoteBtn.addEventListener("click", () => submitFeedback("rejected", downBtn));
+
+  btnRow.appendChild(upBtn);
+  btnRow.appendChild(downBtn);
+  btnRow.appendChild(noteInput);
+  btnRow.appendChild(sendNoteBtn);
+  wrap.appendChild(btnRow);
+  return wrap;
 }
 
 // ─── Action item card (expandable — 6-field strategic breakdown) ──────────────
@@ -456,29 +677,6 @@ function section(iconHtml, label, extraClass = "") {
   lbl.innerHTML = `<span class="section-icon">${iconHtml}</span>${label}`;
   sec.appendChild(lbl);
   return sec;
-}
-
-function ul_(items, className) {
-  const list = el_("ul", className);
-  for (const item of items) {
-    const li = document.createElement("li");
-    li.textContent = item;
-    list.appendChild(li);
-  }
-  return list;
-}
-
-function clearResult() {
-  const area = document.getElementById("result-area");
-  if (area) area.innerHTML = "";
-}
-
-function appendToResult(el) {
-  const area = document.getElementById("result-area");
-  if (area) {
-    area.appendChild(el);
-    el.scrollIntoView({ behavior: "smooth", block: "nearest" });
-  }
 }
 
 function errorBanner(msg) {

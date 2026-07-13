@@ -37,17 +37,76 @@ def _pending_approvals(db: Session) -> list[PendingApproval]:
     ).all()
 
 
+HISTORY_LIMIT = 12
+
+
+def _recent_runs(db: Session, limit: int = HISTORY_LIMIT) -> list[OfficeRun]:
+    """Oldest-first slice of the most recent runs, so the thread renders
+    top-to-bottom like a growing conversation instead of newest-on-top."""
+    rows = db.scalars(
+        select(OfficeRun).order_by(OfficeRun.created_at.desc()).limit(limit)
+    ).all()
+    return list(reversed(rows))
+
+
 @router.get("/", response_class=HTMLResponse)
 def office_home(request: Request, db: Session = Depends(get_db)):
-    latest_run = db.scalar(select(OfficeRun).order_by(OfficeRun.created_at.desc()))
+    recent_runs = _recent_runs(db)
     return templates.TemplateResponse(
         request,
         "office.html",
         {
-            "latest_run": latest_run,
+            "latest_run": recent_runs[-1] if recent_runs else None,
+            "recent_runs": recent_runs,
             "pending_approvals": _pending_approvals(db),
         },
     )
+
+
+@router.get("/runs/recent")
+def runs_recent(db: Session = Depends(get_db)):
+    """JSON feed of recent runs for the client to hydrate the chat-style
+    history thread on load / after a refresh, using the same renderer the
+    live SSE stream uses -- so refreshing the page never loses the thread."""
+    runs = _recent_runs(db)
+    return [
+        {
+            "run_id": r.id,
+            "raw_text": r.raw_text,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+            "agents_run": r.agents_run or [],
+            "key_findings": r.key_findings or [],
+            "founder_actions": r.founder_actions or [],
+            "ai_actions": r.ai_actions or [],
+            "missing_info": r.missing_info or [],
+            "questions": r.questions or [],
+            "team_notes": r.team_notes or [],
+            "outcome": r.outcome,
+            "founder_note": r.founder_note,
+        }
+        for r in runs
+    ]
+
+
+@router.post("/runs/{run_id}/feedback")
+def submit_run_feedback(
+    run_id: int,
+    outcome: str = Form(...),
+    founder_note: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    """Founder marking a run's output as accepted/rejected, with an optional
+    note -- the raw signal that gets folded into future runs' context (see
+    supervisor._recent_feedback_note) instead of being thrown away."""
+    run = db.get(OfficeRun, run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="not found")
+    if outcome not in ("accepted", "rejected"):
+        raise HTTPException(status_code=400, detail="invalid outcome")
+    run.outcome = outcome
+    run.founder_note = founder_note or None
+    db.commit()
+    return {"ok": True}
 
 
 @router.post("/run/stream")
