@@ -43,7 +43,8 @@ _Populate as you build — explicit user instructions worth remembering across s
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- `beauty_agent_system/` has its own Python env, separate from the pnpm workspace. After a fresh import/clone (or if the `Beauty Agent System` workflow fails with `.pythonlibs/bin/python: No such file or directory`), run `uv sync` from the repo root to (re)install it, then `cd beauty_agent_system && /home/runner/workspace/.pythonlibs/bin/python -m alembic upgrade head` to apply DB migrations to `NEON_DATABASE_URL` before restarting the workflow.
+- Verify the service is actually healthy (not just "port open") with `beauty_agent_system/scripts/health_check.sh` — it checks `/admin/system-health` and exercises the `/webhooks/chatwoot` intent-routing path end to end.
 
 ## Pointers
 
