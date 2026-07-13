@@ -376,12 +376,7 @@ function renderFinal(ev) {
     const sec = section(IC.check, "สิ่งที่คุณต้องทำ", "result-section--actions");
     const list = el_("ul", "task-list");
     founder_actions.forEach((action, i) => {
-      const li = document.createElement("li");
-      li.className = "task-item";
-      li.innerHTML = `
-        <span class="task-num">${i + 1}</span>
-        <span class="task-body">${esc(action)}</span>`;
-      list.appendChild(li);
+      list.appendChild(renderActionItem(action, i));
     });
     sec.appendChild(list);
     card.appendChild(sec);
@@ -404,6 +399,54 @@ function renderFinal(ev) {
 
   clearResult();
   appendToResult(card);
+}
+
+// ─── Action item card (expandable — 6-field strategic breakdown) ──────────────
+function renderActionItem(action, i) {
+  const li = document.createElement("li");
+  li.className = "task-item";
+
+  // Backward-compat: older runs stored founder_actions as plain strings.
+  if (typeof action === "string" || action == null) {
+    li.innerHTML = `
+      <span class="task-num">${i + 1}</span>
+      <span class="task-body">${esc(action)}</span>`;
+    return li;
+  }
+
+  const {
+    action: actionText = "", goal_metric = "", target_audience = "",
+    where_and_how_many = "", reasoning = "", engagement_tactic = "",
+  } = action;
+
+  const details = document.createElement("details");
+  details.className = "task-details";
+
+  const summary = document.createElement("summary");
+  summary.className = "task-summary";
+  summary.innerHTML = `
+    <span class="task-num">${i + 1}</span>
+    <span class="task-body">${esc(actionText)}</span>
+    <span class="task-expand-icon">${IC.arrow}</span>`;
+  details.appendChild(summary);
+
+  const body = el_("div", "task-detail-body");
+  const rows = [
+    [IC.target, "เป้าหมาย", goal_metric],
+    [IC.user, "กลุ่มเป้าหมาย", target_audience],
+    [IC.layers, "ที่ไหน/กี่จุด", where_and_how_many],
+    [IC.bulb, "ทำไมถึงจะได้ผล", reasoning],
+    [IC.chart, "วิธีกระตุ้นปฏิสัมพันธ์", engagement_tactic],
+  ];
+  for (const [icon, label, val] of rows) {
+    if (!val) continue;
+    const row = el_("div", "task-detail-row");
+    row.innerHTML = `<span class="task-detail-row__label">${icon} ${label}</span><span class="task-detail-row__val">${esc(val)}</span>`;
+    body.appendChild(row);
+  }
+  details.appendChild(body);
+  li.appendChild(details);
+  return li;
 }
 
 // ─── Utilities ────────────────────────────────────────────────────────────────

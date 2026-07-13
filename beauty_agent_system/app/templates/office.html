@@ -37,13 +37,13 @@
     {% if latest_run %}
     <div class="result-card">
       <div class="result-card__header">
-        <span class="result-card__title">📋 ผลวิเคราะห์ล่าสุด</span>
+        <span class="result-card__title">ผลวิเคราะห์ล่าสุด</span>
         <time class="result-card__time">{{ latest_run.created_at.strftime('%d/%m/%y %H:%M') }}</time>
       </div>
 
       {% if latest_run.questions %}
       <div class="result-section result-section--attention">
-        <div class="section-label">💬 ทีม AI มีคำถาม</div>
+        <div class="section-label">ทีม AI มีคำถาม</div>
         {% for q in latest_run.questions %}
         <p><strong>{{ q.label }}</strong>: {{ q.question }}</p>
         {% endfor %}
@@ -57,15 +57,37 @@
 
       {% if latest_run.key_findings %}
       <div class="result-section">
-        <div class="section-label">📊 สิ่งที่วิเคราะห์พบ</div>
+        <div class="section-label">สิ่งที่วิเคราะห์พบ</div>
         <ul class="result-list">{% for f in latest_run.key_findings %}<li>{{ f }}</li>{% endfor %}</ul>
       </div>
       {% endif %}
 
       {% if latest_run.founder_actions %}
       <div class="result-section">
-        <div class="section-label">✅ ต้องทำตอนนี้</div>
-        <ul class="result-list result-list--actions">{% for a in latest_run.founder_actions %}<li>{{ a }}</li>{% endfor %}</ul>
+        <div class="section-label">ต้องทำตอนนี้</div>
+        <ul class="task-list">
+          {% for a in latest_run.founder_actions %}
+          {% if a is mapping %}
+          <li class="task-item">
+            <details class="task-details">
+              <summary class="task-summary">
+                <span class="task-num">{{ loop.index }}</span>
+                <span class="task-body">{{ a.action }}</span>
+              </summary>
+              <div class="task-detail-body">
+                {% if a.goal_metric %}<div class="task-detail-row"><span class="task-detail-row__label">เป้าหมาย</span><span class="task-detail-row__val">{{ a.goal_metric }}</span></div>{% endif %}
+                {% if a.target_audience %}<div class="task-detail-row"><span class="task-detail-row__label">กลุ่มเป้าหมาย</span><span class="task-detail-row__val">{{ a.target_audience }}</span></div>{% endif %}
+                {% if a.where_and_how_many %}<div class="task-detail-row"><span class="task-detail-row__label">ที่ไหน/กี่จุด</span><span class="task-detail-row__val">{{ a.where_and_how_many }}</span></div>{% endif %}
+                {% if a.reasoning %}<div class="task-detail-row"><span class="task-detail-row__label">ทำไมถึงจะได้ผล</span><span class="task-detail-row__val">{{ a.reasoning }}</span></div>{% endif %}
+                {% if a.engagement_tactic %}<div class="task-detail-row"><span class="task-detail-row__label">วิธีกระตุ้นปฏิสัมพันธ์</span><span class="task-detail-row__val">{{ a.engagement_tactic }}</span></div>{% endif %}
+              </div>
+            </details>
+          </li>
+          {% else %}
+          <li class="task-item"><span class="task-num">{{ loop.index }}</span><span class="task-body">{{ a }}</span></li>
+          {% endif %}
+          {% endfor %}
+        </ul>
       </div>
       {% endif %}
     </div>

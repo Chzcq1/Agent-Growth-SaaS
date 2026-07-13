@@ -520,7 +520,14 @@ async def stream_run_office(db: Session, raw_text: str):
             "approval_id": approval.id,
         }
         approval_id = approval.id
-        founder_actions.append("ตรวจ/แก้/อนุมัติข้อความร่างจาก Sales Assistant ก่อนส่งลูกค้าจริง")
+        founder_actions.append({
+            "action": "ตรวจ/แก้/อนุมัติข้อความร่างจาก Sales Assistant ก่อนส่งลูกค้าจริง",
+            "goal_metric": "",
+            "target_audience": "",
+            "where_and_how_many": "",
+            "reasoning": "ข้อความร่างต้องผ่านสายตา Founder ก่อนเสมอ เพื่อให้น้ำเสียงตรงกับที่ต้องการและไม่มีข้อผิดพลาด",
+            "engagement_tactic": "",
+        })
 
     tone_note = _recent_sales_tone_note(db)
     if tone_note:
