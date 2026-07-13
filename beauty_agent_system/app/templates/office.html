@@ -13,6 +13,31 @@
 </form>
 
 {% if latest_run %}
+{% if latest_run.questions %}
+<article class="briefing-card briefing-card--attention" style="margin-top: 24px;">
+  <h2>ทีม AI อยากถามคุณก่อนทำต่อ</h2>
+  <ul>
+    {% for q in latest_run.questions %}
+    <li><strong>{{ q.label }}</strong> ถาม: {{ q.question }}</li>
+    {% endfor %}
+  </ul>
+  <form method="post" action="/run/continue" class="stacked-form">
+    <input type="hidden" name="previous_run_id" value="{{ latest_run.id }}" />
+    <textarea name="answer" rows="3" placeholder="ตอบคำถามด้านบนตรงนี้ แล้วทีมจะทำงานต่อทันที..." required></textarea>
+    <button type="submit" class="btn btn--primary">ส่งคำตอบ ให้ทีมทำงานต่อ</button>
+  </form>
+</article>
+{% endif %}
+{% if latest_run.team_notes %}
+<article class="briefing-card" style="margin-top: 24px;">
+  <h2>ข้อสังเกต/ไอเดียที่ทีม AI เจอระหว่างทาง</h2>
+  <ul>
+    {% for n in latest_run.team_notes %}
+    <li><strong>{{ n.label }}</strong>: {{ n.note }}</li>
+    {% endfor %}
+  </ul>
+</article>
+{% endif %}
 {% if latest_run.plan_trace %}
 <article class="briefing-card" style="margin-top: 24px;">
   <h2>ทีม AI กำลังทำงานร่วมกัน</h2>

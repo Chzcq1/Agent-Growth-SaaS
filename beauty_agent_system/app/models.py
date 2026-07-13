@@ -122,6 +122,8 @@ class OfficeRun(Base):
     agents_run: Mapped[list] = mapped_column(JSON, default=list)
     plan_trace: Mapped[dict | None] = mapped_column(JSON)
     review_trace: Mapped[dict | None] = mapped_column(JSON)
+    questions: Mapped[list] = mapped_column(JSON, default=list)
+    team_notes: Mapped[list] = mapped_column(JSON, default=list)
     key_findings: Mapped[list] = mapped_column(JSON, default=list)
     founder_actions: Mapped[list] = mapped_column(JSON, default=list)
     ai_actions: Mapped[list] = mapped_column(JSON, default=list)

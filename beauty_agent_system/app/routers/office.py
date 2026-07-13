@@ -54,6 +54,8 @@ async def run_office(request: Request, raw_text: str = Form(...), db: Session = 
         agents_run=result["agents_run"],
         plan_trace=result.get("plan_trace"),
         review_trace=result.get("review_trace"),
+        questions=result.get("questions") or [],
+        team_notes=result.get("team_notes") or [],
         key_findings=result["key_findings"],
         founder_actions=result["founder_actions"],
         ai_actions=result["ai_actions"],
@@ -71,6 +73,27 @@ async def run_office(request: Request, raw_text: str = Form(...), db: Session = 
             "pending_approvals": _pending_approvals(db),
         },
     )
+
+
+@router.post("/run/continue", response_class=HTMLResponse)
+async def continue_office_run(
+    request: Request,
+    previous_run_id: int = Form(...),
+    answer: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    """Founder answering a clarifying_question a worker agent asked. Folds
+    the answer into the original raw_text as extra context and re-runs the
+    whole office -- simplest way to keep it a single append-only "thread"
+    rather than building a separate half-finished conversation model."""
+    previous = db.get(OfficeRun, previous_run_id)
+    if not previous:
+        raise HTTPException(status_code=404, detail="not found")
+
+    combined_text = (
+        f"{previous.raw_text}\n\n[คำตอบเพิ่มเติมจาก Founder ต่อคำถามของทีม AI]\n{answer.strip()}"
+    )
+    return await run_office(request, raw_text=combined_text, db=db)
 
 
 @router.post("/approvals/{approval_id}/approve")

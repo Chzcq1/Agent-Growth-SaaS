@@ -157,6 +157,7 @@ textarea, input[type=text], select {
 .recommendation { font-size: 0.9rem; }
 
 .update-card, .task-card, .briefing-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; }
+.briefing-card--attention { border-color: var(--accent); background: #f5e2da; }
 .update-card__note { color: var(--muted); }
 .update-card__finding { font-weight: 600; }
 .reply-suggestion { background: #f6f2ea; border-radius: 10px; padding: 12px 14px; margin-top: 10px; }

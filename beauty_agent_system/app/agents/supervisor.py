@@ -187,6 +187,22 @@ def _merge_results(results: list[dict]) -> tuple[list[str], list[str], list[str]
     return key_findings, founder_actions, ai_actions, missing_info
 
 
+def _collect_questions_and_notes(results: list[dict]) -> tuple[list[dict], list[dict]]:
+    """Pulls out each agent's clarifying_question (if it truly couldn't
+    proceed confidently) and observations (proactive ideas/signals outside
+    its own task) so they can be shown separately and prominently, instead
+    of getting buried inside key_findings/missing_info."""
+    questions: list[dict] = []
+    notes: list[dict] = []
+    for result in results:
+        label = result["label_th"]
+        if result.get("clarifying_question"):
+            questions.append({"agent": result["agent_name"], "label": label, "question": result["clarifying_question"]})
+        for note in result.get("observations") or []:
+            notes.append({"label": label, "note": note})
+    return questions, notes
+
+
 async def run_office(db: Session, raw_text: str) -> dict:
     """Main entry point: plan -> dispatch -> review -> (rework once) ->
     synthesize.
@@ -201,6 +217,8 @@ async def run_office(db: Session, raw_text: str) -> dict:
             "agents_run": [],
             "plan_trace": None,
             "review_trace": None,
+            "questions": [],
+            "team_notes": [],
             "key_findings": [],
             "founder_actions": [],
             "ai_actions": [],
@@ -215,6 +233,8 @@ async def run_office(db: Session, raw_text: str) -> dict:
             "agents_run": [],
             "plan_trace": None,
             "review_trace": None,
+            "questions": [],
+            "team_notes": [],
             "key_findings": [],
             "founder_actions": [],
             "ai_actions": [],
@@ -293,10 +313,14 @@ async def run_office(db: Session, raw_text: str) -> dict:
     if tone_note:
         key_findings.append(f"[Supervisor] {tone_note}")
 
+    questions, team_notes = _collect_questions_and_notes(list(results_by_agent.values()))
+
     return {
         "agents_run": [AGENT_MODULES[name].LABEL_TH for name in selected],
         "plan_trace": plan_trace,
         "review_trace": review_trace,
+        "questions": questions,
+        "team_notes": team_notes,
         "key_findings": key_findings,
         "founder_actions": founder_actions,
         "ai_actions": ai_actions,
