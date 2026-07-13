@@ -21,9 +21,9 @@ def list_leads(request: Request, status: str = "", db: Session = Depends(get_db)
         query = query.where(Lead.status == LeadStatus(status))
     leads = db.scalars(query).all()
     return templates.TemplateResponse(
+        request,
         "leads.html",
         {
-            "request": request,
             "leads": leads,
             "statuses": [s.value for s in LeadStatus],
             "active_status": status,

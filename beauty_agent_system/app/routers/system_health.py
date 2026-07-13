@@ -20,9 +20,9 @@ def system_health(request: Request, db: Session = Depends(get_db)):
     sleep_state = rate_limiter.get_sleep_state(db)
     quota = rate_limiter.estimate_quota_used_today(db)
     return templates.TemplateResponse(
+        request,
         "system_health.html",
         {
-            "request": request,
             "sleep_state": sleep_state,
             "quota": quota,
             "max_per_minute": settings.max_requests_per_minute,
@@ -32,7 +32,7 @@ def system_health(request: Request, db: Session = Depends(get_db)):
     )
 
 
-@router.get("/api", response_class=None)
+@router.get("/api")
 def system_health_json(db: Session = Depends(get_db)):
     sleep_state = rate_limiter.get_sleep_state(db)
     quota = rate_limiter.estimate_quota_used_today(db)

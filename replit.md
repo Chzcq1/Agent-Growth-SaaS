@@ -22,9 +22,14 @@ _Replace the heading above with the project's name, and this line with one sente
 
 ## Where things live
 
+- `beauty_agent_system/` — standalone FastAPI + LangGraph multi-agent app (Beauty SaaS Growth & Support System). Not part of the pnpm workspace, not a Replit artifact. See `beauty_agent_system/README.md` for architecture, env vars, and deploy (Render + Neon).
+
 _Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
 
 ## Architecture decisions
+
+- `beauty_agent_system/` is intentionally isolated from the Node/pnpm stack: it's Python/FastAPI, deployed to Render (not Replit), backed by Neon Postgres (not the Replit DB), and uses GitHub Models (not Replit AI Integrations) per explicit user choice. Its DB secret is `NEON_DATABASE_URL` and its LLM secret is `GITHUB_MODELS_TOKEN` — deliberately not named `DATABASE_URL`/`GITHUB_TOKEN` to avoid colliding with Replit-managed keys.
+- Its dev workflow (`Beauty Agent System`, port 8000) runs `python run.py` directly; it is a hand-configured workflow, not an artifact-managed one.
 
 _Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
 

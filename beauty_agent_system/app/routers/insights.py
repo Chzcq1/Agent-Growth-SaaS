@@ -18,7 +18,7 @@ templates = Jinja2Templates(directory="app/templates")
 def list_insights(request: Request, db: Session = Depends(get_db)):
     insights = db.scalars(select(WeeklyInsight).order_by(WeeklyInsight.week_start.desc())).all()
     return templates.TemplateResponse(
-        "insights.html", {"request": request, "insights": insights, "active_nav": "insights"}
+        request, "insights.html", {"insights": insights, "active_nav": "insights"}
     )
 
 

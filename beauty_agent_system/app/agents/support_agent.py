@@ -6,6 +6,9 @@ support ticket for the admin instead of guessing.
 """
 from __future__ import annotations
 
+import difflib
+import re
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -15,21 +18,43 @@ from app.models import KbArticle, SupportTicket
 
 AGENT_NAME = "support_agent"
 
+# Matching is deliberately NOT whitespace-tokenized: Thai script has no
+# spaces between words, so `question.split()` would never find overlap for
+# Thai input. Instead we combine (a) whole-string similarity against the
+# article's question via difflib, which works character-by-character and is
+# language-agnostic, with (b) substring containment for comma-separated tags
+# (English shorthand keywords the founder writes deliberately).
+_MATCH_THRESHOLD = 0.28
+
+
+def _normalize(text: str) -> str:
+    return re.sub(r"\s+", "", text.lower())
+
 
 def _find_kb_match(db: Session, question: str) -> KbArticle | None:
-    """Simple keyword-overlap match against the KB. No embeddings needed for
-    the size of KB this founder will realistically maintain by hand."""
-    words = {w.lower() for w in question.split() if len(w) > 2}
-    if not words:
+    normalized_question = _normalize(question)
+    if not normalized_question:
         return None
+
     articles = db.scalars(select(KbArticle)).all()
-    best: tuple[int, KbArticle | None] = (0, None)
+    best: tuple[float, KbArticle | None] = (0.0, None)
     for article in articles:
-        haystack = f"{article.question} {article.tags or ''}".lower()
-        score = sum(1 for w in words if w in haystack)
+        similarity = difflib.SequenceMatcher(
+            None, normalized_question, _normalize(article.question)
+        ).ratio()
+
+        tag_hit = 0.0
+        for tag in (article.tags or "").split(","):
+            tag = tag.strip().lower()
+            if tag and tag in question.lower():
+                tag_hit = 0.5
+                break
+
+        score = max(similarity, tag_hit)
         if score > best[0]:
             best = (score, article)
-    if best[0] == 0:
+
+    if best[0] < _MATCH_THRESHOLD:
         return None
     return best[1]
 

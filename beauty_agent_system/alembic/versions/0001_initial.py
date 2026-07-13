@@ -13,6 +13,9 @@ down_revision = None
 branch_labels = None
 depends_on = None
 
+# Do not pre-create this type separately: op.create_table() below already
+# creates the Postgres ENUM type as part of creating the "leads" column, and
+# calling .create() a second time raises "type already exists".
 lead_status = sa.Enum(
     "New", "Contacted", "FollowUp_1", "FollowUp_2", "Trial", "Ghosted", "Blocked",
     name="lead_status",
@@ -20,8 +23,6 @@ lead_status = sa.Enum(
 
 
 def upgrade() -> None:
-    lead_status.create(op.get_bind(), checkfirst=True)
-
     op.create_table(
         "leads",
         sa.Column("shop_id", sa.Integer, primary_key=True, autoincrement=True),

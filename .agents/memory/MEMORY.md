@@ -1,0 +1,3 @@
+- [Python subproject in pnpm monorepo](python-subproject-in-pnpm-monorepo.md) — standalone FastAPI apps live in their own top-level dir, outside pnpm-workspace and artifacts.
+- [Starlette Jinja2Templates new signature](starlette-jinja2templates-signature.md) — newer starlette requires `TemplateResponse(request, name, context)`; old `(name, {"request":...})` fails with a confusing jinja2 cache TypeError.
+- [SQLAlchemy Python str-Enum pitfalls](sqlalchemy-str-enum-pitfalls.md) — native Postgres ENUM stores member name unless `values_callable` is set; pre-creating the type separately then using it in create_table double-creates it.

@@ -26,8 +26,9 @@ def list_approvals(request: Request, db: Session = Depends(get_db)):
     ).all()
     leads_by_id = {lead.shop_id: lead for lead in db.scalars(select(Lead)).all()}
     return templates.TemplateResponse(
+        request,
         "approvals.html",
-        {"request": request, "approvals": approvals, "leads_by_id": leads_by_id, "active_nav": "approvals"},
+        {"approvals": approvals, "leads_by_id": leads_by_id, "active_nav": "approvals"},
     )
 
 

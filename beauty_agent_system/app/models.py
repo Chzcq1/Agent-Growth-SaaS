@@ -37,7 +37,13 @@ class Lead(Base):
     facebook_url: Mapped[str | None] = mapped_column(String(500))
     line_id: Mapped[str | None] = mapped_column(String(255))
     status: Mapped[LeadStatus] = mapped_column(
-        Enum(LeadStatus, name="lead_status", native_enum=True), default=LeadStatus.NEW
+        Enum(
+            LeadStatus,
+            name="lead_status",
+            native_enum=True,
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
+        ),
+        default=LeadStatus.NEW,
     )
     pain_points: Mapped[dict | None] = mapped_column(JSON)
     last_contacted_date: Mapped[datetime | None] = mapped_column(DateTime)

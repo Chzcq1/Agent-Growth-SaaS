@@ -21,8 +21,9 @@ def list_articles(request: Request, db: Session = Depends(get_db)):
         select(SupportTicket).where(SupportTicket.status == "open").order_by(SupportTicket.created_at.desc())
     ).all()
     return templates.TemplateResponse(
+        request,
         "knowledge_base.html",
-        {"request": request, "articles": articles, "tickets": tickets, "active_nav": "knowledge_base"},
+        {"articles": articles, "tickets": tickets, "active_nav": "knowledge_base"},
     )
 
 

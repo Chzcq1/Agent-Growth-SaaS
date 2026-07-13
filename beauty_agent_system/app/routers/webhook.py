@@ -17,12 +17,15 @@ router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 
 
 def _get_or_create_lead(db: Session, *, shop_name: str, facebook_url: str | None, line_id: str | None) -> Lead:
-    query = select(Lead)
+    # Only match an existing lead when we have a real unique identifier
+    # (Facebook URL or Line ID). Without one, always create a new lead --
+    # matching on shop_name alone (or matching nothing at all) would silently
+    # merge unrelated conversations into whichever lead happens to exist.
+    lead = None
     if facebook_url:
-        query = query.where(Lead.facebook_url == facebook_url)
+        lead = db.scalar(select(Lead).where(Lead.facebook_url == facebook_url))
     elif line_id:
-        query = query.where(Lead.line_id == line_id)
-    lead = db.scalar(query)
+        lead = db.scalar(select(Lead).where(Lead.line_id == line_id))
     if lead:
         return lead
     lead = Lead(shop_name=shop_name, facebook_url=facebook_url, line_id=line_id)
