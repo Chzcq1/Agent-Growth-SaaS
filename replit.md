@@ -1,51 +1,52 @@
-# [Project name]
+# CSC Virtual Office
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+A private single-page tool for the CSC founder: paste a Facebook comment, lead conversation, feature question, or any raw note — six AI specialist agents analyse it concurrently and return one synthesised answer (key findings + action plan + any draft messages awaiting approval).
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
-- `pnpm run typecheck` — full typecheck across all packages
-- `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+### Required secrets (add via Replit Secrets before starting)
+- `NEON_DATABASE_URL` — Neon Postgres connection string (`postgresql://user:pass@ep-xxx.neon.tech/dbname?sslmode=require`). Create a free project at [neon.tech](https://neon.tech).
+- `GITHUB_MODELS_TOKEN` — GitHub fine-grained PAT with the "Models" permission. Create at [github.com/settings/tokens](https://github.com/settings/tokens).
+
+### Starting the app
+1. Add both secrets above via Replit Secrets.
+2. Apply DB migrations (first time, or after schema changes):
+   ```bash
+   cd beauty_agent_system && /home/runner/workspace/.pythonlibs/bin/python -m alembic upgrade head
+   ```
+3. Start via the **Beauty Agent System** workflow in the UI, or:
+   ```bash
+   cd beauty_agent_system && PORT=8000 /home/runner/workspace/.pythonlibs/bin/python run.py
+   ```
+
+### Other commands
+- `cd beauty_agent_system && pytest tests/test_rate_limiter.py -v` — run rate-limiter unit tests
 
 ## Stack
 
-- pnpm workspaces, Node.js 24, TypeScript 5.9
-- API: Express 5
-- DB: PostgreSQL + Drizzle ORM
-- Validation: Zod (`zod/v4`), `drizzle-zod`
-- API codegen: Orval (from OpenAPI spec)
-- Build: esbuild (CJS bundle)
+- **Beauty Agent System** (`beauty_agent_system/`): Python, FastAPI, LangGraph, SQLAlchemy + Alembic, Neon Postgres, GitHub Models (GPT-4o-mini)
+- pnpm workspaces, Node.js 24, TypeScript 5.9 (scaffolding only — no Node app built yet)
 
 ## Where things live
 
-- `beauty_agent_system/` — standalone FastAPI + LangGraph multi-agent app (Beauty SaaS Growth & Support System). Not part of the pnpm workspace, not a Replit artifact. See `beauty_agent_system/README.md` for architecture, env vars, and deploy (Render + Neon).
-
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `beauty_agent_system/` — standalone FastAPI + LangGraph multi-agent app. Not part of the pnpm workspace. See `beauty_agent_system/README.md` for full architecture details.
+- `beauty_agent_system/app/agents/` — the six specialist agents (Lead Hunter, Sales Assistant, Demo Agent, Onboarding, Customer Success, Product Analyst)
+- `beauty_agent_system/app/agents/supervisor.py` — routes input, runs agents concurrently, merges results
+- `beauty_agent_system/app/business_context.py` — single source of truth for CSC's stage, priorities, and off-limits scope
+- `beauty_agent_system/app/agents/prompts.py` — all LLM prompt constants
 
 ## Architecture decisions
 
-- `beauty_agent_system/` is intentionally isolated from the Node/pnpm stack: it's Python/FastAPI, deployed to Render (not Replit), backed by Neon Postgres (not the Replit DB), and uses GitHub Models (not Replit AI Integrations) per explicit user choice. Its DB secret is `NEON_DATABASE_URL` and its LLM secret is `GITHUB_MODELS_TOKEN` — deliberately not named `DATABASE_URL`/`GITHUB_TOKEN` to avoid colliding with Replit-managed keys.
-- Its dev workflow (`Beauty Agent System`, port 8000) runs `python run.py` directly; it is a hand-configured workflow, not an artifact-managed one.
+- `beauty_agent_system/` is intentionally isolated from the Node/pnpm stack: it's Python/FastAPI, deployed to Render (not Replit), backed by Neon Postgres (not the Replit DB), and uses GitHub Models per explicit design. Its secrets are `NEON_DATABASE_URL` and `GITHUB_MODELS_TOKEN` — deliberately not named `DATABASE_URL`/`GITHUB_TOKEN` to avoid colliding with Replit-managed keys.
+- Agent synthesis is deterministic Python merging (no LLM "synthesis" call) so combined answers can't drift.
+- Keyword-heuristic routing first, LLM classification only as fallback — protects GitHub Models rate limits.
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+## Gotchas
 
-## Product
-
-_Describe the high-level user-facing capabilities of this app once they exist._
+- The `Beauty Agent System` workflow will fail until both `NEON_DATABASE_URL` and `GITHUB_MODELS_TOKEN` secrets are set.
+- After adding secrets, run `alembic upgrade head` (step 2 above) before starting — the app expects all tables to exist.
+- If the workflow fails with `.pythonlibs/bin/python: No such file or directory` after a fresh clone, run `uv sync` from the repo root to reinstall the Python env.
 
 ## User preferences
 
 _Populate as you build — explicit user instructions worth remembering across sessions._
-
-## Gotchas
-
-- `beauty_agent_system/` has its own Python env, separate from the pnpm workspace. After a fresh import/clone (or if the `Beauty Agent System` workflow fails with `.pythonlibs/bin/python: No such file or directory`), run `uv sync` from the repo root to (re)install it, then `cd beauty_agent_system && /home/runner/workspace/.pythonlibs/bin/python -m alembic upgrade head` to apply DB migrations to `NEON_DATABASE_URL` before restarting the workflow.
-- Verify the service is actually healthy (not just "port open") with `beauty_agent_system/scripts/health_check.sh` — it checks `/admin/system-health` and exercises the `/webhooks/chatwoot` intent-routing path end to end.
-
-## Pointers
-
-- See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details
