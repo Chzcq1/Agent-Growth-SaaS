@@ -45,7 +45,15 @@ A private single-page tool for the CSC founder: paste a Facebook comment, lead c
 
 - The `Beauty Agent System` workflow will fail until both `NEON_DATABASE_URL` and `GITHUB_MODELS_TOKEN` secrets are set.
 - After adding secrets, run `alembic upgrade head` (step 2 above) before starting — the app expects all tables to exist.
-- If the workflow fails with `.pythonlibs/bin/python: No such file or directory` after a fresh clone, run `uv sync` from the repo root to reinstall the Python env.
+- If the workflow fails with `.pythonlibs/bin/python: No such file or directory` after a fresh clone, run `uv sync` from the repo root to reinstall the Python env (this is expected right after an import/clone — `.pythonlibs` is gitignored and not checked in).
+
+## Setup status (last verified 2026-07-13)
+
+- Ran `uv sync` from the repo root to (re)create `.pythonlibs` after the import — required every time the project is freshly cloned since the venv isn't committed.
+- Confirmed `NEON_DATABASE_URL` and `GITHUB_MODELS_TOKEN` are set as Replit Secrets.
+- Ran `cd beauty_agent_system && /home/runner/workspace/.pythonlibs/bin/python -m alembic upgrade head` — schema is current.
+- Restarted the `Beauty Agent System` workflow; verified `GET /` returns 200 with the rendered Virtual Office page.
+- Two unrelated scaffold artifacts (`artifacts/api-server`, `artifacts/mockup-sandbox`) exist in this repo but were not created for this project and are not part of the Beauty Agent System — they have no installed dependencies and are out of scope for this app.
 
 ## User preferences
 
