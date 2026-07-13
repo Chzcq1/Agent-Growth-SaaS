@@ -4,12 +4,80 @@
 
 <div class="vo-layout">
 
-  <!-- ── INPUT ─────────────────────────────────────────────────────────── -->
-  <section class="vo-input">
-    <h1>Virtual Office</h1>
-    <p class="subtitle">แปะโพสต์ บทสนทนา หรือ Feedback จาก Facebook — ทีม AI จะวิเคราะห์ วางแผนคอนเทนต์ ร่างข้อความ และแบ่งงานให้ทันที</p>
+  <!-- ── CHAT SCROLL AREA (everything above the composer scrolls inside this
+       fixed-height pane, like a normal AI chat window -- the page itself
+       never scrolls) ──────────────────────────────────────────────────── -->
+  <div id="chat-scroll" class="chat-scroll">
+
+    <section class="vo-input">
+      <h1>Virtual Office</h1>
+      <p class="subtitle">แปะโพสต์ บทสนทนา หรือ Feedback จาก Facebook — ทีม AI จะวิเคราะห์ วางแผนคอนเทนต์ ร่างข้อความ และแบ่งงานให้ทันที</p>
+    </section>
+
+    <!-- ── HISTORY THREAD (grows downward like a chat -- hydrated from
+         /runs/recent on load, then live SSE results get appended so a
+         refresh never loses it) ──────────────────────────────────────── -->
+    <div id="history-area" class="history-area"></div>
+
+    <!-- ── PROGRESS (during streaming: thinking cloud + agent typing bubbles
+         + handoff), placed right after the thread so it reads like a
+         "typing…" indicator at the bottom of the conversation ─────────── -->
+    <div id="progress-area" class="progress-area" hidden>
+      <div id="thinking-cloud" class="thinking-cloud" hidden>
+        <span class="thinking-cloud__icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>
+        </span>
+        <span id="thinking-cloud__text">กำลังคิด...</span>
+        <span class="thinking-dots"><i></i><i></i><i></i></span>
+      </div>
+      <div class="progress-bar-wrap"><div id="progress-bar" class="progress-bar"></div></div>
+      <div id="progress-agents" class="progress-agents"></div>
+    </div>
+
+    <!-- ── LEGACY RESULT MOUNT (kept for the very first paint before JS hydrates) -->
+    <div id="result-area"></div>
+    <div id="static-result" class="hidden"></div>
+
+    <!-- ── PENDING APPROVALS ────────────────────────────────────────────── -->
+    {% if pending_approvals %}
+    <details class="approvals-details">
+      <summary class="approvals-summary"><span class="approvals-toggle">▶</span> ข้อความร่างที่รออนุมัติ ({{ pending_approvals|length }})</summary>
+      <div class="card-list" style="margin-top:12px">
+        {% for approval in pending_approvals %}
+        <article class="approval-card">
+          <div class="approval-card__header">
+            <strong>ร่างทัก Messenger</strong>
+            <time>{{ approval.created_at.strftime('%d/%m/%y %H:%M') }}</time>
+          </div>
+          <p class="draft-preview">{{ approval.draft_message }}</p>
+          {% if approval.reasoning %}
+          <details class="reasoning"><summary>เหตุผลที่เลือกมุมนี้</summary><p>{{ approval.reasoning }}</p></details>
+          {% endif %}
+          <div class="approval-card__actions">
+            <form method="post" action="/approvals/{{ approval.id }}/approve">
+              <button type="submit" class="btn btn--success btn--sm">อนุมัติ</button>
+            </form>
+            <form method="post" action="/approvals/{{ approval.id }}/reject">
+              <button type="submit" class="btn btn--danger btn--sm">ไม่ใช้</button>
+            </form>
+            <form method="post" action="/approvals/{{ approval.id }}/edit" style="flex:1">
+              <input type="text" name="edited_message" value="{{ approval.draft_message }}" required />
+              <button type="submit" class="btn btn--primary btn--sm" style="margin-top:6px">แก้แล้วใช้</button>
+            </form>
+          </div>
+        </article>
+        {% endfor %}
+      </div>
+    </details>
+    {% endif %}
+
+  </div>
+
+  <!-- ── COMPOSER (pinned to the bottom of the viewport, like a normal AI
+       chat app -- never gets pushed down by a growing history) ───────── -->
+  <section class="vo-composer">
     <form id="office-form" class="input-form">
-      <textarea id="raw-text-input" name="raw_text" rows="5"
+      <textarea id="raw-text-input" name="raw_text" rows="1"
         placeholder="เช่น: คอมเมนต์จาก Facebook กลุ่ม / บทสนทนากับลีด / Feedback จากร้าน / ปัญหาที่ลูกค้าเจอ..."
         required>{{ latest_run.raw_text if latest_run else '' }}</textarea>
       <button type="submit" class="btn btn--primary btn--submit" id="submit-btn">
@@ -22,60 +90,6 @@
       </button>
     </form>
   </section>
-
-  <!-- ── PROGRESS (during streaming: thinking cloud + agent typing bubbles + handoff) -->
-  <div id="progress-area" class="progress-area" hidden>
-    <div id="thinking-cloud" class="thinking-cloud" hidden>
-      <span class="thinking-cloud__icon">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>
-      </span>
-      <span id="thinking-cloud__text">กำลังคิด...</span>
-      <span class="thinking-dots"><i></i><i></i><i></i></span>
-    </div>
-    <div class="progress-bar-wrap"><div id="progress-bar" class="progress-bar"></div></div>
-    <div id="progress-agents" class="progress-agents"></div>
-  </div>
-
-  <!-- ── HISTORY THREAD (grows downward like a chat -- hydrated from /runs/recent
-       on load, then live SSE results get appended so a refresh never loses it) -->
-  <div id="history-area" class="history-area"></div>
-
-  <!-- ── LEGACY RESULT MOUNT (kept for the very first paint before JS hydrates) -->
-  <div id="result-area"></div>
-  <div id="static-result" class="hidden"></div>
-
-  <!-- ── PENDING APPROVALS ──────────────────────────────────────────────── -->
-  {% if pending_approvals %}
-  <details class="approvals-details">
-    <summary class="approvals-summary"><span class="approvals-toggle">▶</span> ข้อความร่างที่รออนุมัติ ({{ pending_approvals|length }})</summary>
-    <div class="card-list" style="margin-top:12px">
-      {% for approval in pending_approvals %}
-      <article class="approval-card">
-        <div class="approval-card__header">
-          <strong>ร่างทัก Messenger</strong>
-          <time>{{ approval.created_at.strftime('%d/%m/%y %H:%M') }}</time>
-        </div>
-        <p class="draft-preview">{{ approval.draft_message }}</p>
-        {% if approval.reasoning %}
-        <details class="reasoning"><summary>เหตุผลที่เลือกมุมนี้</summary><p>{{ approval.reasoning }}</p></details>
-        {% endif %}
-        <div class="approval-card__actions">
-          <form method="post" action="/approvals/{{ approval.id }}/approve">
-            <button type="submit" class="btn btn--success btn--sm">อนุมัติ</button>
-          </form>
-          <form method="post" action="/approvals/{{ approval.id }}/reject">
-            <button type="submit" class="btn btn--danger btn--sm">ไม่ใช้</button>
-          </form>
-          <form method="post" action="/approvals/{{ approval.id }}/edit" style="flex:1">
-            <input type="text" name="edited_message" value="{{ approval.draft_message }}" required />
-            <button type="submit" class="btn btn--primary btn--sm" style="margin-top:6px">แก้แล้วใช้</button>
-          </form>
-        </div>
-      </article>
-      {% endfor %}
-    </div>
-  </details>
-  {% endif %}
 
 </div>
 {% endblock %}

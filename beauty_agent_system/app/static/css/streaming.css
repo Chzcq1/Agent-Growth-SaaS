@@ -1,38 +1,79 @@
 /* ── Virtual Office — Streaming UI ───────────────────────────────────────── */
 
-/* Layout */
-.vo-layout { display: flex; flex-direction: column; gap: 24px; }
+/* Layout: a real chat window -- the browser viewport never scrolls, only
+   #chat-scroll does, and the composer stays pinned to the bottom exactly
+   like a normal AI chat app instead of a growing page. */
+.shell {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.content {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.vo-layout {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-bottom: 12px;
+  scroll-behavior: smooth;
+}
 
 /* Input */
+.vo-input { flex-shrink: 0; }
 .vo-input h1 { font-size: 1.45rem; margin: 0 0 4px; }
+
+.vo-composer {
+  flex-shrink: 0;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+  padding: 12px 0 4px;
+}
 
 .input-form {
   display: flex;
-  flex-direction: column;
+  align-items: flex-end;
   gap: 10px;
   max-width: 680px;
 }
 
 .input-form textarea {
+  flex: 1;
   width: 100%;
   padding: 12px 14px;
-  border-radius: 12px;
+  border-radius: 16px;
   border: 1.5px solid var(--border);
   font-family: inherit;
   font-size: 0.93rem;
   background: #fff;
-  resize: vertical;
-  line-height: 1.6;
+  resize: none;
+  line-height: 1.5;
+  max-height: 160px;
   transition: border-color 0.15s;
 }
 .input-form textarea:focus { outline: none; border-color: #a8936a; }
 
 .btn--submit {
-  align-self: flex-start;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 22px;
+  padding: 12px 20px;
+  border-radius: 14px;
   font-size: 0.92rem;
 }
 .btn--submit:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -42,24 +83,30 @@
 /* ── Progress ──────────────────────────────────────────────────────────── */
 .progress-area { max-width: 680px; }
 
+/* Indeterminate "thinking" bar: a short orange segment sweeps back and
+   forth across the track (like it's actively working), instead of a track
+   that just pulses width in place. */
 .progress-bar-wrap {
-  height: 2px;
+  position: relative;
+  height: 4px;
   background: var(--border);
-  border-radius: 2px;
+  border-radius: 4px;
   overflow: hidden;
   margin-bottom: 14px;
 }
 .progress-bar {
+  position: absolute;
+  top: 0;
+  left: -35%;
   height: 100%;
-  background: var(--accent);
-  border-radius: 2px;
-  width: 15%;
-  animation: progressPulse 1.4s ease-in-out infinite;
+  width: 35%;
+  border-radius: 4px;
+  background: linear-gradient(90deg, transparent, #ff8a3d 35%, #ff8a3d 65%, transparent);
+  animation: thinkSweep 1.3s ease-in-out infinite alternate;
 }
-@keyframes progressPulse {
-  0%   { width: 15%; opacity: 1; }
-  50%  { width: 70%; opacity: 0.8; }
-  100% { width: 15%; opacity: 1; }
+@keyframes thinkSweep {
+  0%   { left: -35%; }
+  100% { left: 100%; }
 }
 
 .progress-agents { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -241,6 +288,17 @@
   border-bottom: 1px solid var(--border);
 }
 .result-section:last-child { border-bottom: none; }
+
+/* Progressive reveal: each section fades/slides in as it's appended instead
+   of the whole card appearing in one frame -- lets the founder start
+   reading a finished section while later ones are still "arriving". */
+.result-section--incoming {
+  opacity: 0;
+  transform: translateY(8px);
+}
+.result-section {
+  transition: opacity 0.32s ease, transform 0.32s ease;
+}
 
 .result-section--attention { background: #fff8f5; border-left: 3px solid var(--accent); }
 .result-section--ideas     { background: #faf9f6; }

@@ -49,8 +49,17 @@ document.addEventListener("DOMContentLoaded", () => {
   form.addEventListener("submit", handleSubmit);
 
   const textarea = document.getElementById("raw-text-input");
+  autoGrowTextarea(textarea);
   textarea.addEventListener("input", () => {
     localStorage.setItem(DRAFT_KEY, textarea.value);
+    autoGrowTextarea(textarea);
+  });
+  // Enter sends, Shift+Enter adds a newline -- standard chat-app behavior.
+  textarea.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      form.requestSubmit();
+    }
   });
 });
 
@@ -75,6 +84,21 @@ async function hydrateHistory() {
   } catch (_) { /* history is a nice-to-have; ignore failures */ }
 }
 
+// ─── Chat scroll container (the only thing that scrolls -- the composer
+// stays pinned to the bottom of the viewport like a normal AI chat app) ────
+function scrollChatToBottom(behavior = "smooth") {
+  const area = document.getElementById("chat-scroll");
+  if (!area) return;
+  area.scrollTo({ top: area.scrollHeight, behavior });
+}
+
+// Textarea auto-grows a little as the founder types a longer message,
+// instead of staying a fixed single line.
+function autoGrowTextarea(textarea) {
+  textarea.style.height = "auto";
+  textarea.style.height = `${Math.min(textarea.scrollHeight, 160)}px`;
+}
+
 // ─── Form submit ──────────────────────────────────────────────────────────────
 async function handleSubmit(e) {
   e.preventDefault();
@@ -85,6 +109,7 @@ async function handleSubmit(e) {
 
   appendUserBubble(rawText);
   textarea.value = "";
+  autoGrowTextarea(textarea);
   localStorage.removeItem(DRAFT_KEY);
 
   setSubmitting(true);
@@ -134,10 +159,14 @@ function handleEvent(ev) {
     case "final":      onFinal(ev); break;
     case "error":      appendToThread(errorBanner(ev.message)); break;
   }
+  scrollChatToBottom();
 }
 
 // ─── Progress area ────────────────────────────────────────────────────────────
-function showProgress() { document.getElementById("progress-area").hidden = false; }
+function showProgress() {
+  document.getElementById("progress-area").hidden = false;
+  scrollChatToBottom();
+}
 function hideProgress() {
   document.getElementById("progress-area").hidden = true;
   hideThinkingCloud();
@@ -229,8 +258,9 @@ function appendRunToThread(run, { live }) {
   // If this is the live in-flight run, the user bubble is already appended
   // by handleSubmit(); for history hydration, show both bubble + card.
   if (!live && run.raw_text) appendUserBubble(run.raw_text);
-  const card = buildResultCard(run, { live });
+  const { card, sections } = buildResultCard(run, { live });
   appendToThread(card);
+  revealSectionsSequentially(card, sections, { live });
 }
 
 function appendToThread(el) {
@@ -242,7 +272,7 @@ function appendToThread(el) {
 }
 
 function scrollThreadToBottom() {
-  window.scrollTo({ top: document.body.scrollHeight, behavior: "auto" });
+  scrollChatToBottom("auto");
 }
 
 // ─── Result card builder ───────────────────────────────────────────────────────
@@ -255,6 +285,10 @@ function buildResultCard(ev, { live } = {}) {
   } = ev;
 
   const card = el_("div", "result-card");
+  // Sections are collected here instead of appended directly so the caller
+  // can reveal them one-by-one (progressive "streaming" feel) instead of
+  // dumping the whole analysis on screen in one frame.
+  const sections = [];
 
   // Header
   const tags = agents_run.map(l => `<span class="tag">${esc(l)}</span>`).join("");
@@ -321,7 +355,7 @@ function buildResultCard(ev, { live } = {}) {
       qb.appendChild(sendBtn);
       sec.appendChild(qb);
     }
-    card.appendChild(sec);
+    sections.push(sec);
   }
 
   // ── 2. Key findings (condensed -- founder said 3 pages of bullets is too
@@ -329,7 +363,7 @@ function buildResultCard(ev, { live } = {}) {
   if (key_findings.length) {
     const sec = section(IC.chart, "สิ่งที่วิเคราะห์พบ");
     sec.appendChild(condensedList(key_findings, "result-list", 3));
-    card.appendChild(sec);
+    sections.push(sec);
   }
 
   // ── 3. Content plan (step-by-step, Notion-style) ──────────────────────────
@@ -427,14 +461,14 @@ function buildResultCard(ev, { live } = {}) {
       sec.appendChild(pitchWrap);
     }
 
-    card.appendChild(sec);
+    sections.push(sec);
   }
 
   // ── 4. Content ideas ──────────────────────────────────────────────────────
   if (content_ideas.length) {
     const sec = section(IC.bulb, "ไอเดียคอนเทนต์เพิ่มเติม", "result-section--ideas");
     sec.appendChild(condensedList(content_ideas, "ideas-list", 3, true));
-    card.appendChild(sec);
+    sections.push(sec);
   }
 
   // ── 5. Draft message ──────────────────────────────────────────────────────
@@ -479,7 +513,7 @@ function buildResultCard(ev, { live } = {}) {
       details.innerHTML = `<summary>เหตุผลที่เลือกมุมนี้</summary><p style="font-size:0.84rem;color:var(--muted)">${esc(draft.reasoning)}</p>`;
       sec.appendChild(details);
     }
-    card.appendChild(sec);
+    sections.push(sec);
   }
 
   // ── 6. Founder actions (AI thinks → คุณ action) ───────────────────────────
@@ -490,14 +524,14 @@ function buildResultCard(ev, { live } = {}) {
       list.appendChild(renderActionItem(action, i));
     });
     sec.appendChild(list);
-    card.appendChild(sec);
+    sections.push(sec);
   }
 
   // ── 7. AI actions ─────────────────────────────────────────────────────────
   if (ai_actions.length) {
     const sec = section(IC.cpu, "AI จะทำต่อเอง");
     sec.appendChild(condensedList(ai_actions, "result-list result-list--ai", 3));
-    card.appendChild(sec);
+    sections.push(sec);
   }
 
   // ── 8. Missing info ───────────────────────────────────────────────────────
@@ -505,15 +539,38 @@ function buildResultCard(ev, { live } = {}) {
   if (realMissing.length) {
     const sec = section(IC.alert, "ข้อมูลที่ยังขาด");
     sec.appendChild(condensedList(realMissing, "result-list result-list--warn", 3));
-    card.appendChild(sec);
+    sections.push(sec);
   }
 
   // ── 9. Feedback (accept/reject → feeds back into future runs) ─────────────
   if (run_id) {
-    card.appendChild(buildFeedbackRow(run_id, outcome, founder_note));
+    sections.push(buildFeedbackRow(run_id, outcome, founder_note));
   }
 
-  return card;
+  return { card, sections };
+}
+
+// ─── Reveal a result card's sections one at a time, each with a small
+// stagger + fade/slide-in, so a founder can read a section that's already
+// done while later ones are still "arriving" -- instead of the whole
+// analysis appearing in one frame. History hydration (live=false) reveals
+// everything instantly so reloading the page doesn't feel slow. ──────────
+function revealSectionsSequentially(card, sections, { live } = {}) {
+  if (!live) {
+    sections.forEach(sec => card.appendChild(sec));
+    return;
+  }
+  let i = 0;
+  const revealNext = () => {
+    if (i >= sections.length) return;
+    const sec = sections[i++];
+    sec.classList.add("result-section--incoming");
+    card.appendChild(sec);
+    scrollChatToBottom();
+    requestAnimationFrame(() => sec.classList.remove("result-section--incoming"));
+    setTimeout(revealNext, 260);
+  };
+  revealNext();
 }
 
 // ─── Condensed list: show first N items, "ดูเพิ่มเติม" toggles the rest ────────

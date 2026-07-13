@@ -19,7 +19,22 @@ def get_engine():
     NEON_DATABASE_URL to already be configured."""
     settings = get_settings()
     url = settings.neon_database_url or "sqlite:///./_unconfigured.db"
-    return create_engine(url, pool_pre_ping=True, future=True)
+    # Small, short-lived pool: Neon's autoscaling compute stays busier (and
+    # costs more) the longer connections sit open/idle, and this app never
+    # needs many concurrent connections (one per in-flight request). Keeping
+    # the pool small + recycling idle connections lets Neon's compute scale
+    # back down between founder messages instead of staying pinned up.
+    if url.startswith("sqlite"):
+        return create_engine(url, pool_pre_ping=True, future=True)
+    return create_engine(
+        url,
+        pool_pre_ping=True,
+        future=True,
+        pool_size=3,
+        max_overflow=2,
+        pool_recycle=180,
+        pool_timeout=30,
+    )
 
 
 @lru_cache
