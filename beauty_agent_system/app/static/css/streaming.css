@@ -61,6 +61,12 @@
   padding-right: 0;
   border-right-color: transparent;
 }
+/* On desktop: when the sidebar is fully collapsed (width → 0) the toggle
+   button inside it is hidden too.  Show the topbar toggle instead so the
+   founder can always re-open the sidebar. */
+.sidebar--collapsed ~ .shell__main .sidebar__toggle--mobile {
+  display: flex;
+}
 .sidebar__top {
   display: flex;
   align-items: center;

@@ -1,60 +1,85 @@
-# CSC Virtual Office
+# CSC Virtual Office — Beauty Agent System
 
-A private single-page tool for the CSC founder: paste a Facebook comment, lead conversation, feature question, or any raw note — six AI specialist agents analyse it concurrently and return one synthesised answer (key findings + action plan + any draft messages awaiting approval).
-
-## Run & Operate
-
-### Required secrets (add via Replit Secrets before starting)
-- `NEON_DATABASE_URL` — Neon Postgres connection string (`postgresql://user:pass@ep-xxx.neon.tech/dbname?sslmode=require`). Create a free project at [neon.tech](https://neon.tech).
-- `GITHUB_MODELS_TOKEN` — GitHub fine-grained PAT with the "Models" permission. Create at [github.com/settings/tokens](https://github.com/settings/tokens).
-
-### Starting the app
-1. Add both secrets above via Replit Secrets.
-2. Apply DB migrations (first time, or after schema changes):
-   ```bash
-   cd beauty_agent_system && /home/runner/workspace/.pythonlibs/bin/python -m alembic upgrade head
-   ```
-3. Start via the **Beauty Agent System** workflow in the UI, or:
-   ```bash
-   cd beauty_agent_system && PORT=8000 /home/runner/workspace/.pythonlibs/bin/python run.py
-   ```
-
-### Other commands
-- `cd beauty_agent_system && pytest tests/test_rate_limiter.py -v` — run rate-limiter unit tests
+A single-page "virtual office" for the founder of CSC (an online booking SaaS for beauty salons). Paste raw text — Facebook comments, lead conversations, feature questions, shop feedback — and the AI team analyses it and returns one synthesized action plan in real time.
 
 ## Stack
 
-- **Beauty Agent System** (`beauty_agent_system/`): Python, FastAPI, LangGraph, SQLAlchemy + Alembic, Neon Postgres, GitHub Models (GPT-4o-mini)
-- pnpm workspaces, Node.js 24, TypeScript 5.9 (scaffolding only — no Node app built yet)
+- **Backend**: FastAPI + Python 3.11 (Uvicorn, SQLAlchemy, Alembic)
+- **Database**: Neon Postgres (falls back to local SQLite when `NEON_DATABASE_URL` is not set)
+- **AI**: GitHub Models API (OpenAI-compatible; gpt-4o-mini by default)
+- **Frontend**: Server-rendered Jinja2 + vanilla JS (SSE streaming)
 
-## Where things live
+All code lives in `beauty_agent_system/`.
 
-- `beauty_agent_system/` — standalone FastAPI + LangGraph multi-agent app. Not part of the pnpm workspace. See `beauty_agent_system/README.md` for full architecture details.
-- `beauty_agent_system/app/agents/` — the six specialist agents (Lead Hunter, Sales Assistant, Demo Agent, Onboarding, Customer Success, Product Analyst)
-- `beauty_agent_system/app/agents/supervisor.py` — routes input, runs agents concurrently, merges results
-- `beauty_agent_system/app/business_context.py` — single source of truth for CSC's stage, priorities, and off-limits scope
-- `beauty_agent_system/app/agents/prompts.py` — all LLM prompt constants
+## Running on Replit
 
-## Architecture decisions
+The **Beauty Agent System** workflow starts the server automatically. It runs:
 
-- `beauty_agent_system/` is intentionally isolated from the Node/pnpm stack: it's Python/FastAPI, deployed to Render (not Replit), backed by Neon Postgres (not the Replit DB), and uses GitHub Models per explicit design. Its secrets are `NEON_DATABASE_URL` and `GITHUB_MODELS_TOKEN` — deliberately not named `DATABASE_URL`/`GITHUB_TOKEN` to avoid colliding with Replit-managed keys.
-- Agent synthesis is deterministic Python merging (no LLM "synthesis" call) so combined answers can't drift.
-- Keyword-heuristic routing first, LLM classification only as fallback — protects GitHub Models rate limits.
+```
+cd beauty_agent_system && python3 run.py
+```
 
-## Gotchas
+The server listens on `$PORT` (default 8000).
 
-- The `Beauty Agent System` workflow will fail until both `NEON_DATABASE_URL` and `GITHUB_MODELS_TOKEN` secrets are set.
-- After adding secrets, run `alembic upgrade head` (step 2 above) before starting — the app expects all tables to exist.
-- If the workflow fails with `.pythonlibs/bin/python: No such file or directory` after a fresh clone, run `uv sync` from the repo root to reinstall the Python env (this is expected right after an import/clone — `.pythonlibs` is gitignored and not checked in).
+To apply DB migrations manually:
 
-## Setup status (last verified 2026-07-13)
+```bash
+cd beauty_agent_system
+python3 -m alembic upgrade head
+```
 
-- Ran `uv sync` from the repo root to (re)create `.pythonlibs` after the import — required every time the project is freshly cloned since the venv isn't committed.
-- Re-collected `NEON_DATABASE_URL` and `GITHUB_MODELS_TOKEN` via Replit Secrets (they don't carry over on re-import) and confirmed both are set.
-- Ran `cd beauty_agent_system && /home/runner/workspace/.pythonlibs/bin/python -m alembic upgrade head` — schema is current.
-- Restarted the `Beauty Agent System` workflow; verified `GET /` returns 200.
-- Two unrelated scaffold artifacts (`artifacts/api-server`, `artifacts/mockup-sandbox`) exist in this repo but were not created for this project and are not part of the Beauty Agent System — they have no installed dependencies and are out of scope for this app.
+## Required Secrets
 
-## User preferences
+Set these in Replit Secrets (already configured):
 
-_Populate as you build — explicit user instructions worth remembering across sessions._
+| Secret | Purpose |
+|--------|---------|
+| `NEON_DATABASE_URL` | Neon Postgres connection string |
+| `GITHUB_MODELS_TOKEN` | GitHub fine-grained PAT with "Models" permission |
+
+Without `NEON_DATABASE_URL` the app falls back to a local SQLite file and creates all tables automatically — useful for dev/testing.
+
+## Architecture
+
+```
+Founder pastes text → Supervisor selects relevant agents (0–8) →
+    agents run concurrently → Supervisor synthesises ONE answer:
+        Key Findings + Action Plan (Founder must do / AI will do)
+        + inline draft approval (when Sales Assistant produced one)
+```
+
+### The 8 specialist agents (`beauty_agent_system/app/agents/`)
+
+| Key | File | Role |
+|-----|------|------|
+| `lead_hunter` | `lead_hunter.py` | Extracts pain points from Facebook/lead text |
+| `sales_assistant` | `sales_assistant.py` | Drafts one Messenger opening line |
+| `demo_agent` | `demo_agent.py` | Preps feature/package Q&A |
+| `onboarding_agent` | `onboarding_agent.py` | Flags setup / verification issues |
+| `customer_success_agent` | `customer_success_agent.py` | Churn-risk signals for live shops |
+| `product_analyst_agent` | `product_analyst_agent.py` | Groups feedback into a roadmap note |
+| `content_strategist` | `content_strategist_agent.py` | Step-by-step Facebook content plan |
+| `general_assistant` | `general_assistant.py` | Fallback for anything outside the above; also handles attached images |
+
+### Key files
+
+- `app/agents/supervisor.py` — orchestrator: routing → dispatch → QA review → synthesis
+- `app/agents/prompts.py` — all LLM prompts (edit here to change agent behaviour)
+- `app/business_context.py` — CSC stage, pain points, off-limits scope (single source of truth)
+- `app/routers/office.py` — HTTP routes (`/`, `/run/stream`, `/run/continue`, etc.)
+- `app/static/js/app.js` — streaming UI (SSE reader, sidebar, chat thread)
+- `app/rate_limiter.py` — GitHub Models rate-limit enforcement
+
+## Deployment
+
+The app is designed to be deployed to **Render** (see README in `beauty_agent_system/`) backed by a Neon Postgres database. Production start command:
+
+```
+alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+```
+
+## User Preferences
+
+- Keep the existing Python/FastAPI structure; do not migrate to Node/TypeScript.
+- All prompts live in `app/agents/prompts.py` and `app/business_context.py` — edit there, not inline in agent files.
+- The app intentionally has no separate Approvals/Leads/System Health pages — everything goes through the single `/` page.

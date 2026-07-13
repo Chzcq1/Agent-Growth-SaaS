@@ -506,15 +506,44 @@ function buildResultCard(ev, { live } = {}) {
         if (!answer || !run_id) return;
         sendBtn.disabled = true;
         sendBtn.textContent = "กำลังส่ง...";
-        const fd = new FormData();
-        fd.append("previous_run_id", String(run_id));
-        fd.append("answer", answer);
+
+        // Step 1: ask the backend to build the combined text (original raw_text +
+        // answer annotation) and return the conversation to stream into.
+        const continueFd = new FormData();
+        continueFd.append("previous_run_id", String(run_id));
+        continueFd.append("answer", answer);
+        let combinedText, conversationId;
         try {
-          const resp = await fetch("/run/continue", { method: "POST", body: fd });
-          if (resp.redirected || resp.ok) location.reload();
-        } catch (_) {
+          const continueResp = await fetch("/run/continue", { method: "POST", body: continueFd });
+          if (!continueResp.ok) throw new Error(`continue error ${continueResp.status}`);
+          const data = await continueResp.json();
+          combinedText = data.combined_text;
+          conversationId = data.conversation_id;
+        } catch (err) {
           sendBtn.disabled = false;
           sendBtn.textContent = "ส่งคำตอบ";
+          appendToThread(errorBanner(err.message || "ส่งคำตอบไม่สำเร็จ"));
+          return;
+        }
+
+        // Step 2: stream the re-run through the normal SSE pipeline so the
+        // founder gets real-time progress instead of a full-page reload.
+        appendUserBubble(`[ตอบคำถาม] ${answer}`);
+        setSubmitting(true);
+        showProgress();
+        const streamFd = new FormData();
+        streamFd.append("raw_text", combinedText);
+        streamFd.append("conversation_id", String(conversationId || ""));
+        streamFd.append("image_urls", "[]");
+        try {
+          const streamResp = await fetch("/run/stream", { method: "POST", body: streamFd });
+          if (!streamResp.ok) throw new Error(`Server error ${streamResp.status}`);
+          await readSSE(streamResp);
+        } catch (err) {
+          appendToThread(errorBanner(err.message || String(err)));
+        } finally {
+          hideProgress();
+          setSubmitting(false);
         }
       });
 

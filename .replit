@@ -24,13 +24,13 @@ args = "Beauty Agent System"
 name = "Beauty Agent System"
 author = "agent"
 
+[workflows.workflow.metadata]
+outputType = "webview"
+
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "cd beauty_agent_system && PORT=8000 /home/runner/workspace/.pythonlibs/bin/python run.py"
+args = "cd beauty_agent_system && python3 run.py"
 waitForPort = 8000
-
-[workflows.workflow.metadata]
-outputType = "console"
 
 [agent]
 stack = "PNPM_WORKSPACE"

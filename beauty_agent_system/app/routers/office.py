@@ -238,6 +238,7 @@ async def run_office(
 
     run = OfficeRun(
         raw_text=raw_text,
+        image_urls=[],
         conversation_id=conversation_id,
         agents_run=result["agents_run"],
         plan_trace=result.get("plan_trace"),
@@ -249,6 +250,7 @@ async def run_office(
         ai_actions=result["ai_actions"],
         missing_info=result["missing_info"],
         approval_id=result.get("approval_id"),
+        general_answer=result.get("general_answer"),
     )
     db.add(run)
     db.commit()
@@ -259,21 +261,26 @@ async def run_office(
         {
             "latest_run": run,
             "pending_approvals": _pending_approvals(db),
+            "conversation_id": conversation_id,
+            "conversations": _conversation_list(db),
         },
     )
 
 
-@router.post("/run/continue", response_class=HTMLResponse)
+@router.post("/run/continue")
 async def continue_office_run(
-    request: Request,
     previous_run_id: int = Form(...),
     answer: str = Form(...),
     db: Session = Depends(get_db),
 ):
-    """Founder answering a clarifying_question a worker agent asked. Folds
-    the answer into the original raw_text as extra context and re-runs the
-    whole office -- simplest way to keep it a single append-only "thread"
-    rather than building a separate half-finished conversation model."""
+    """Founder answering a clarifying_question a worker agent asked.
+
+    Returns JSON with the combined raw_text the client should stream through
+    /run/stream so the founder sees real-time SSE progress instead of a
+    full-page reload.  Folds the answer into the original raw_text so every
+    agent has full context (same approach as before, just returned as JSON
+    instead of an HTML page redirect).
+    """
     previous = db.get(OfficeRun, previous_run_id)
     if not previous:
         raise HTTPException(status_code=404, detail="not found")
@@ -281,7 +288,10 @@ async def continue_office_run(
     combined_text = (
         f"{previous.raw_text}\n\n[คำตอบเพิ่มเติมจาก Founder ต่อคำถามของทีม AI]\n{answer.strip()}"
     )
-    return await run_office(request, raw_text=combined_text, conversation_id=previous.conversation_id, db=db)
+    return {
+        "combined_text": combined_text,
+        "conversation_id": previous.conversation_id,
+    }
 
 
 @router.post("/approvals/{approval_id}/approve")
