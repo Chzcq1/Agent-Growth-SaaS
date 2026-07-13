@@ -171,8 +171,9 @@ def _recent_sales_tone_note(db: Session) -> str | None:
     return None
 
 
-def _merge_results(results: list[dict]) -> tuple[list[str], list[str], list[str], list[str]]:
+def _merge_results(results: list[dict]) -> tuple[list[str], list[str], list[str], list[str], list[str]]:
     key_findings: list[str] = []
+    content_ideas: list[str] = []
     founder_actions: list[str] = []
     ai_actions: list[str] = []
     missing_info: list[str] = []
@@ -180,11 +181,12 @@ def _merge_results(results: list[dict]) -> tuple[list[str], list[str], list[str]
         label = result["label_th"]
         for finding in result["key_findings"]:
             key_findings.append(f"[{label}] {finding}")
+        content_ideas.extend(result.get("content_ideas") or [])
         founder_actions.extend(result["founder_actions"])
         ai_actions.extend(result["ai_actions"])
         for missing in result["missing_info"]:
             missing_info.append(f"[{label}] {missing}")
-    return key_findings, founder_actions, ai_actions, missing_info
+    return key_findings, content_ideas, founder_actions, ai_actions, missing_info
 
 
 def _collect_questions_and_notes(results: list[dict]) -> tuple[list[dict], list[dict]]:
@@ -259,7 +261,7 @@ async def run_office(db: Session, raw_text: str) -> dict:
     # --- Stage 2: dispatch -- run every selected agent concurrently. ---
     results = await asyncio.gather(*(AGENT_MODULES[name].run(db, raw_text) for name in selected))
     results_by_agent = {r["agent_name"]: r for r in results}
-    key_findings, founder_actions, ai_actions, missing_info = _merge_results(results)
+    key_findings, content_ideas, founder_actions, ai_actions, missing_info = _merge_results(results)
 
     # --- Stage 3: review -- one QA pass; rework exactly the agents flagged,
     # exactly once, then re-merge. ---
@@ -281,7 +283,7 @@ async def run_office(db: Session, raw_text: str) -> dict:
             review_trace["rework"].append(
                 {"label": AGENT_MODULES[name].LABEL_TH, "feedback": rework_map[name]}
             )
-        key_findings, founder_actions, ai_actions, missing_info = _merge_results(
+        key_findings, content_ideas, founder_actions, ai_actions, missing_info = _merge_results(
             list(results_by_agent.values())
         )
 
@@ -307,7 +309,6 @@ async def run_office(db: Session, raw_text: str) -> dict:
             "approval_id": approval.id,
         }
         approval_id = approval.id
-        founder_actions.append("ตรวจ/แก้/อนุมัติข้อความร่างจาก Sales Assistant ก่อนส่งลูกค้าจริง")
 
     tone_note = _recent_sales_tone_note(db)
     if tone_note:
@@ -322,6 +323,7 @@ async def run_office(db: Session, raw_text: str) -> dict:
         "questions": questions,
         "team_notes": team_notes,
         "key_findings": key_findings,
+        "content_ideas": content_ideas,
         "founder_actions": founder_actions,
         "ai_actions": ai_actions,
         "missing_info": missing_info,
@@ -442,21 +444,13 @@ async def stream_run_office(db: Session, raw_text: str):
                 "draft_message": result.get("draft_message"),
             }
 
-    # ── Stage 2: QA review ───────────────────────────────────────────────
-    yield {"type": "qa_start"}
-    key_findings, founder_actions, ai_actions, missing_info = _merge_results(
+    # ── Stage 2: QA review + rework (silent — no UI events) ─────────────
+    key_findings, content_ideas, founder_actions, ai_actions, missing_info = _merge_results(
         [results_by_agent[n] for n in selected if n in results_by_agent]
     )
     review = await _review_draft(db, raw_text, selected,
                                  key_findings, founder_actions, ai_actions, missing_info)
-    yield {
-        "type": "qa_done",
-        "note": review.get("note"),
-        "sufficient": review.get("sufficient", True),
-        "rework": review.get("rework") or [],
-    }
 
-    # ── Stage 3: rework (at most once) ──────────────────────────────────
     review_trace = {"note": review.get("note"), "rework": []}
     if review.get("rework"):
         rework_map = {
@@ -464,25 +458,12 @@ async def stream_run_office(db: Session, raw_text: str):
             for item in review["rework"]
             if item.get("agent") in AGENT_MODULES
         }
-        for name, feedback in rework_map.items():
-            yield {
-                "type": "rework_start",
-                "agent": name,
-                "label": AGENT_MODULES[name].LABEL_TH,
-                "emoji": AGENT_EMOJI.get(name, "🤖"),
-                "feedback": feedback,
-            }
-            review_trace["rework"].append(
-                {"label": AGENT_MODULES[name].LABEL_TH, "feedback": feedback}
-            )
-
         rework_name_to_task = {
             name: asyncio.create_task(AGENT_MODULES[name].run(db, raw_text, feedback=fb))
             for name, fb in rework_map.items()
         }
         rework_task_to_name = {v: k for k, v in rework_name_to_task.items()}
         pending_rework = set(rework_name_to_task.values())
-
         while pending_rework:
             done, pending_rework = await asyncio.wait(
                 pending_rework, return_when=asyncio.FIRST_COMPLETED
@@ -497,15 +478,10 @@ async def stream_run_office(db: Session, raw_text: str):
                                            missing_info=[str(exc)])
                     )
                 results_by_agent[name] = result
-                yield {
-                    "type": "rework_done",
-                    "agent": name,
-                    "label": result["label_th"],
-                    "emoji": AGENT_EMOJI.get(name, "🤖"),
-                    "findings": result.get("key_findings") or [],
-                }
-
-        key_findings, founder_actions, ai_actions, missing_info = _merge_results(
+                review_trace["rework"].append(
+                    {"label": AGENT_MODULES[name].LABEL_TH, "feedback": rework_map[name]}
+                )
+        key_findings, content_ideas, founder_actions, ai_actions, missing_info = _merge_results(
             [results_by_agent[n] for n in selected if n in results_by_agent]
         )
 
@@ -568,6 +544,7 @@ async def stream_run_office(db: Session, raw_text: str):
         "run_id": run.id,
         "agents_run": [AGENT_MODULES[n].LABEL_TH for n in selected],
         "key_findings": key_findings,
+        "content_ideas": content_ideas,
         "founder_actions": founder_actions,
         "ai_actions": ai_actions,
         "missing_info": missing_info,

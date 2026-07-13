@@ -32,6 +32,7 @@ def empty_result(agent_name: str, label_th: str, *, missing_info: list[str]) -> 
         "label_th": label_th,
         "thinking": None,
         "key_findings": [],
+        "content_ideas": [],
         "founder_actions": [],
         "ai_actions": [],
         "missing_info": missing_info,

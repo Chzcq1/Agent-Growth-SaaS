@@ -49,6 +49,7 @@ async def run(db: Session, raw_text: str, feedback: str | None = None) -> dict:
         "agent_name": AGENT_NAME,
         "label_th": LABEL_TH,
         "key_findings": data.get("key_findings") or [],
+        "content_ideas": data.get("content_ideas") or [],
         "founder_actions": data.get("founder_actions") or [],
         "ai_actions": data.get("ai_actions") or [],
         "missing_info": data.get("missing_info") or [],

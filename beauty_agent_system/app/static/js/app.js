@@ -1,26 +1,29 @@
 "use strict";
 
 // ─── Virtual Office — Streaming UI ───────────────────────────────────────────
-// Intercepts the form submit, sends a POST to /run/stream, and renders each
-// SSE event progressively so the founder sees agents thinking in real time.
-
-const AGENT_LABEL_SHORT = {
-  lead_hunter: "นักล่าลีด",
-  sales_assistant: "ผู้ช่วยขาย",
-  demo_agent: "Demo Agent",
-  onboarding_agent: "Onboarding",
-  customer_success_agent: "Customer Success",
-  product_analyst_agent: "นักวิเคราะห์ผลิตภัณฑ์",
-};
+const LS_KEY = "vo_last_result";
 
 document.addEventListener("DOMContentLoaded", () => {
   const form = document.getElementById("office-form");
   if (!form) return;
+
+  // Hide server-rendered static result — JS will manage state
+  const staticEl = document.getElementById("static-result");
+  if (staticEl) staticEl.classList.add("hidden");
+
+  // Restore last result from localStorage if no server result visible
+  const saved = localStorage.getItem(LS_KEY);
+  if (saved) {
+    try { renderFinal(JSON.parse(saved)); } catch (_) { localStorage.removeItem(LS_KEY); }
+  } else if (staticEl && !staticEl.classList.contains("hidden")) {
+    // keep server result shown
+    staticEl.classList.remove("hidden");
+  }
+
   form.addEventListener("submit", handleSubmit);
 });
 
-// ─── Form submit handler ──────────────────────────────────────────────────────
-
+// ─── Form submit ──────────────────────────────────────────────────────────────
 async function handleSubmit(e) {
   e.preventDefault();
   const form = e.currentTarget;
@@ -28,382 +31,323 @@ async function handleSubmit(e) {
   if (!rawText) return;
 
   setSubmitting(true);
-  showStreamPanel();
-  clearStreamLog();
+  clearResult();
+  showProgress();
+  document.getElementById("static-result")?.classList.add("hidden");
 
-  const formData = new FormData();
-  formData.append("raw_text", rawText);
+  const fd = new FormData();
+  fd.append("raw_text", rawText);
 
   try {
-    const response = await fetch("/run/stream", { method: "POST", body: formData });
-    if (!response.ok) throw new Error(`Server error ${response.status}`);
-    await readSSEStream(response);
+    const resp = await fetch("/run/stream", { method: "POST", body: fd });
+    if (!resp.ok) throw new Error(`Server error ${resp.status}`);
+    await readSSE(resp);
   } catch (err) {
-    appendErrorBanner(err.message || String(err));
+    appendToResult(errorBanner(err.message || String(err)));
   } finally {
+    hideProgress();
     setSubmitting(false);
   }
 }
 
-// ─── SSE stream reader ────────────────────────────────────────────────────────
-// EventSource only supports GET; we use fetch + ReadableStream for POST.
-
-async function readSSEStream(response) {
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-
+// ─── SSE reader ───────────────────────────────────────────────────────────────
+async function readSSE(resp) {
+  const reader = resp.body.getReader();
+  const dec = new TextDecoder();
+  let buf = "";
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-
-    // SSE events are separated by double newlines
-    const parts = buffer.split("\n\n");
-    buffer = parts.pop(); // keep incomplete chunk
-
+    buf += dec.decode(value, { stream: true });
+    const parts = buf.split("\n\n");
+    buf = parts.pop();
     for (const part of parts) {
-      const dataLine = part.split("\n").find((l) => l.startsWith("data: "));
-      if (!dataLine) continue;
-      try {
-        const event = JSON.parse(dataLine.slice(6));
-        handleEvent(event);
-      } catch (_) {
-        // ignore malformed JSON
-      }
+      const line = part.split("\n").find(l => l.startsWith("data: "));
+      if (!line) continue;
+      try { handleEvent(JSON.parse(line.slice(6))); } catch (_) {}
     }
   }
 }
 
-// ─── Event handlers ───────────────────────────────────────────────────────────
-
-function handleEvent(event) {
-  switch (event.type) {
-    case "supervisor_thinking": renderSupervisorThinking(event); break;
-    case "planning":            renderPlanning(event); break;
-    case "agent_start":         renderAgentStart(event); break;
-    case "agent_done":          renderAgentDone(event); break;
-    case "qa_start":            renderQAStart(); break;
-    case "qa_done":             renderQADone(event); break;
-    case "rework_start":        renderReworkStart(event); break;
-    case "rework_done":         renderReworkDone(event); break;
-    case "final":               renderFinal(event); break;
-    case "error":               appendErrorBanner(event.message); break;
-    case "stream_end":          onStreamEnd(); break;
+// ─── Event dispatch ───────────────────────────────────────────────────────────
+function handleEvent(ev) {
+  switch (ev.type) {
+    case "planning":    updateProgressAgents(ev.plan_trace?.assignments || []); break;
+    case "agent_done":  markAgentDone(ev.agent); break;
+    case "final":       onFinal(ev); break;
+    case "error":       appendToResult(errorBanner(ev.message)); break;
+    case "stream_end":  /* handled in handleSubmit finally */ break;
   }
 }
 
-// ─── Render helpers ───────────────────────────────────────────────────────────
-
-function renderSupervisorThinking({ text }) {
-  const el = el_("div", "log-step log-step--supervisor");
-  el.innerHTML = `<span class="step-spinner"></span><span class="step-text">${esc(text)}</span>`;
-  el.id = "supervisor-step";
-  appendLog(el);
+// ─── Progress area ────────────────────────────────────────────────────────────
+function showProgress() {
+  document.getElementById("progress-area").hidden = false;
+}
+function hideProgress() {
+  document.getElementById("progress-area").hidden = true;
 }
 
-function renderPlanning({ plan_trace }) {
-  // Update supervisor step to "done"
-  const sup = document.getElementById("supervisor-step");
-  if (sup) {
-    sup.classList.add("log-step--done");
-    sup.querySelector(".step-spinner")?.remove();
-    sup.innerHTML = `<span class="step-check">✓</span><span class="step-text">Supervisor เลือก ${plan_trace.assignments.length} Agent</span>`;
-  }
-
-  if (!plan_trace.assignments.length) return;
-
-  const el = el_("div", "log-plan");
-  el.innerHTML = `
-    <div class="plan-goal">${esc(plan_trace.goal)}</div>
-    <div class="plan-agents">${plan_trace.assignments.map(a =>
-      `<span class="plan-agent">${a.emoji} ${esc(a.label)}</span>`
-    ).join("")}</div>`;
-  appendLog(el);
-}
-
-function renderAgentStart({ agent, label, emoji }) {
-  const el = el_("div", "agent-card agent-card--working");
-  el.id = `agent-${agent}`;
-  el.innerHTML = `
-    <div class="agent-card__header">
-      <span class="agent-emoji">${emoji}</span>
-      <strong class="agent-name">${esc(label)}</strong>
-      <span class="agent-status">
-        <span class="step-spinner step-spinner--sm"></span>
-        <span class="status-text">กำลังวิเคราะห์...</span>
-      </span>
-    </div>
-    <div class="agent-card__body"></div>`;
-  appendLog(el);
-}
-
-function renderAgentDone({ agent, label, emoji, thinking, findings, question, observations, draft_message }) {
-  let card = document.getElementById(`agent-${agent}`);
-  if (!card) {
-    card = el_("div", "agent-card");
-    card.id = `agent-${agent}`;
-    appendLog(card);
-  }
-  card.classList.remove("agent-card--working");
-  card.classList.add("agent-card--done");
-
-  let bodyHtml = "";
-
-  if (thinking) {
-    bodyHtml += `<div class="agent-thinking">💭 ${esc(thinking)}</div>`;
-  }
-
-  if (findings?.length) {
-    bodyHtml += `<ul class="agent-findings">${findings.map(f => `<li>${esc(f)}</li>`).join("")}</ul>`;
-  } else {
-    bodyHtml += `<p class="muted-text" style="margin:6px 0 0">ไม่พบประเด็นที่เกี่ยวข้องโดยตรง</p>`;
-  }
-
-  if (draft_message) {
-    bodyHtml += `<div class="agent-draft"><span class="draft-label">✏️ ร่างข้อความ</span><p>${esc(draft_message)}</p></div>`;
-  }
-
-  if (observations?.length) {
-    bodyHtml += `<div class="agent-obs"><span class="obs-label">💡 ไอเดียระหว่างทาง</span><ul>${observations.map(o => `<li>${esc(o)}</li>`).join("")}</ul></div>`;
-  }
-
-  if (question) {
-    bodyHtml += `
-      <div class="agent-question" id="q-${agent}">
-        <span class="q-label">❓ ต้องถามคุณก่อน</span>
-        <p>${esc(question)}</p>
-      </div>`;
-  }
-
-  card.innerHTML = `
-    <div class="agent-card__header">
-      <span class="agent-emoji">${emoji}</span>
-      <strong class="agent-name">${esc(label)}</strong>
-      <span class="agent-status agent-status--done">
-        <span class="step-check">✓</span>
-        <span class="status-text">เสร็จแล้ว</span>
-      </span>
-    </div>
-    <div class="agent-card__body">${bodyHtml}</div>`;
-}
-
-function renderQAStart() {
-  const el = el_("div", "log-step log-step--qa");
-  el.id = "qa-step";
-  el.innerHTML = `<span class="step-spinner"></span><span class="step-text">🔎 Supervisor กำลังตรวจงาน QA...</span>`;
-  appendLog(el);
-}
-
-function renderQADone({ note, sufficient, rework }) {
-  const el = document.getElementById("qa-step");
-  if (!el) return;
-  el.classList.add("log-step--done");
-  const icon = sufficient ? "✅" : "🔁";
-  const msg = sufficient
-    ? "QA ผ่าน — ครอบคลุมแล้วในรอบแรก"
-    : `QA พบช่องว่าง — ให้ทำเพิ่ม ${rework?.length || 0} Agent`;
-  el.innerHTML = `<span class="step-check">✓</span><span class="step-text">${icon} ${msg}${note ? ` (${esc(note)})` : ""}</span>`;
-}
-
-function renderReworkStart({ agent, label, emoji, feedback }) {
-  let card = document.getElementById(`agent-${agent}`);
-  if (card) {
-    card.classList.remove("agent-card--done");
-    card.classList.add("agent-card--working", "agent-card--rework");
-    const header = card.querySelector(".agent-card__header");
-    if (header) {
-      header.querySelector(".agent-status").innerHTML =
-        `<span class="step-spinner step-spinner--sm"></span><span class="status-text">ทำรอบ 2 อยู่...</span>`;
-    }
-    const body = card.querySelector(".agent-card__body");
-    if (body) body.innerHTML += `<div class="rework-note">📝 ${esc(feedback)}</div>`;
+function updateProgressAgents(assignments) {
+  const container = document.getElementById("progress-agents");
+  container.innerHTML = "";
+  for (const a of assignments) {
+    const el = document.createElement("span");
+    el.className = "progress-agent progress-agent--working";
+    el.id = `pa-${a.agent}`;
+    el.innerHTML = `<span class="agent-dot"></span>${esc(a.emoji || "")} ${esc(a.label)}`;
+    container.appendChild(el);
   }
 }
 
-function renderReworkDone({ agent, label, emoji, findings }) {
-  const card = document.getElementById(`agent-${agent}`);
-  if (!card) return;
-  card.classList.remove("agent-card--working");
-  card.classList.add("agent-card--done");
-  const header = card.querySelector(".agent-card__header");
-  if (header) {
-    header.querySelector(".agent-status").innerHTML =
-      `<span class="step-check">✓</span><span class="status-text">รอบ 2 เสร็จแล้ว</span>`;
-  }
-  const body = card.querySelector(".agent-card__body");
-  if (body && findings?.length) {
-    const ul = document.createElement("ul");
-    ul.className = "agent-findings agent-findings--rework";
-    ul.innerHTML = findings.map(f => `<li>${esc(f)}</li>`).join("");
-    body.appendChild(ul);
+function markAgentDone(agent) {
+  const el = document.getElementById(`pa-${agent}`);
+  if (el) {
+    el.classList.remove("progress-agent--working");
+    el.classList.add("progress-agent--done");
+    el.querySelector(".agent-dot").textContent = "";
+    el.innerHTML = `<span class="agent-dot"></span>✓ ${el.textContent.trim()}`;
   }
 }
 
-function renderFinal(event) {
+// ─── Result rendering ─────────────────────────────────────────────────────────
+function onFinal(ev) {
+  localStorage.setItem(LS_KEY, JSON.stringify(ev));
+  renderFinal(ev);
+}
+
+function renderFinal(ev) {
   const {
-    key_findings = [], founder_actions = [], ai_actions = [],
-    missing_info = [], questions = [], team_notes = [],
-    draft, agents_run = [], run_id
-  } = event;
+    key_findings = [], content_ideas = [], founder_actions = [],
+    ai_actions = [], missing_info = [], questions = [],
+    draft, agents_run = [], run_id,
+  } = ev;
 
-  const el = el_("div", "final-card");
+  const card = el_("div", "result-card");
 
-  // Questions (answer box)
-  let questionsHtml = "";
+  // Header
+  const tags = agents_run.map(l => `<span class="tag">${esc(l)}</span>`).join("");
+  card.innerHTML = `
+    <div class="result-card__header">
+      <span class="result-card__title">📋 ผลวิเคราะห์ ${tags}</span>
+    </div>`;
+
+  // 1. Questions (if any) — with quick-answer chips
   if (questions.length) {
-    const qItems = questions.map(q =>
-      `<li><strong>${esc(q.label)}</strong> — ${esc(q.question)}</li>`
-    ).join("");
-    questionsHtml = `
-      <div class="final-section final-section--attention">
-        <div class="section-label">💬 ทีม AI อยากถามคุณ</div>
-        <ul class="result-list">${qItems}</ul>
-        ${run_id ? `
-        <form method="post" action="/run/continue" class="stacked-form" style="margin-top:12px">
-          <input type="hidden" name="previous_run_id" value="${run_id}" />
-          <textarea name="answer" rows="3" placeholder="ตอบคำถามด้านบน แล้วทีมจะทำงานต่อทันที..." required></textarea>
-          <button type="submit" class="btn btn--primary">ส่งคำตอบ ให้ทีมทำงานต่อ</button>
-        </form>` : ""}
-      </div>`;
+    const sec = section("💬 ทีม AI มีคำถาม", "result-section--attention");
+    for (const q of questions) {
+      const qb = el_("div", "question-block");
+      qb.innerHTML = `<p><strong>${esc(q.label)}</strong>: ${esc(q.question)}</p>`;
+
+      // Quick-answer chips
+      const chips = el_("div", "question-chips");
+      const QUICK = [
+        "✅ ข้อมูลที่มีอยู่ก็พอแล้ว ทำต่อได้เลย",
+        "❓ ยังไม่รู้เหมือนกัน",
+        "⏭️ ข้ามคำถามนี้ไปก่อน",
+      ];
+      let selectedAnswer = "";
+      const textarea = el_("textarea", "question-custom");
+      textarea.rows = 2;
+      textarea.placeholder = "หรือพิมพ์คำตอบเอง...";
+      textarea.addEventListener("input", () => { selectedAnswer = textarea.value; });
+
+      for (const label of QUICK) {
+        const btn = el_("button", "chip-btn");
+        btn.type = "button";
+        btn.textContent = label;
+        btn.addEventListener("click", () => {
+          selectedAnswer = label;
+          textarea.value = "";
+          chips.querySelectorAll(".chip-btn").forEach(b => b.classList.remove("chip-btn--selected"));
+          btn.classList.add("chip-btn--selected");
+        });
+        chips.appendChild(btn);
+      }
+
+      const sendBtn = el_("button", "btn btn--primary btn--sm");
+      sendBtn.type = "button";
+      sendBtn.style.marginTop = "8px";
+      sendBtn.textContent = "ส่งคำตอบ";
+      sendBtn.addEventListener("click", async () => {
+        const answer = selectedAnswer || textarea.value.trim();
+        if (!answer || !run_id) return;
+        sendBtn.disabled = true;
+        sendBtn.textContent = "กำลังส่ง...";
+        const fd = new FormData();
+        fd.append("previous_run_id", String(run_id));
+        fd.append("answer", answer);
+        try {
+          const resp = await fetch("/run/continue", { method: "POST", body: fd });
+          if (resp.redirected || resp.ok) location.reload();
+        } catch (_) {
+          sendBtn.disabled = false;
+          sendBtn.textContent = "ส่งคำตอบ";
+        }
+      });
+
+      qb.appendChild(chips);
+      qb.appendChild(textarea);
+      qb.appendChild(sendBtn);
+      sec.appendChild(qb);
+    }
+    card.appendChild(sec);
   }
 
-  // Team notes
-  let notesHtml = "";
-  if (team_notes.length) {
-    notesHtml = `
-      <div class="final-section">
-        <div class="section-label">💡 ข้อสังเกตจากทีม AI</div>
-        <ul class="result-list">${team_notes.map(n => `<li><strong>${esc(n.label)}</strong>: ${esc(n.note)}</li>`).join("")}</ul>
-      </div>`;
+  // 2. Key findings
+  if (key_findings.length) {
+    const sec = section("📊 สิ่งที่วิเคราะห์พบ");
+    sec.appendChild(ul_(key_findings, "result-list"));
+    card.appendChild(sec);
   }
 
-  // Key findings
-  const findingsHtml = key_findings.length
-    ? `<ul class="result-list">${key_findings.map(f => `<li>${esc(f)}</li>`).join("")}</ul>`
-    : `<p class="muted-text">ไม่พบประเด็นที่ชัดเจนจากข้อมูลนี้</p>`;
-
-  // Action plan
-  const founderHtml = founder_actions.length
-    ? `<ul class="result-list">${founder_actions.map(a => `<li>${esc(a)}</li>`).join("")}</ul>`
-    : `<span class="muted-text">ไม่มี</span>`;
-  const aiHtml = ai_actions.length
-    ? `<ul class="result-list">${ai_actions.map(a => `<li>${esc(a)}</li>`).join("")}</ul>`
-    : `<span class="muted-text">ไม่มี</span>`;
-
-  // Missing info
-  const missingHtml = missing_info.length
-    ? `<ul class="result-list result-list--warn">${missing_info.map(m => `<li>${esc(m)}</li>`).join("")}</ul>`
-    : "";
-
-  // Draft message (Sales Assistant)
-  let draftHtml = "";
-  if (draft) {
-    draftHtml = `
-      <div class="final-section">
-        <div class="section-label">✏️ ข้อความร่างจาก Sales Assistant (รอตรวจก่อนส่ง)</div>
-        <div class="draft-box">${esc(draft.message)}</div>
-        ${draft.reasoning ? `<details class="reasoning"><summary>เหตุผลที่เลือกมุมนี้</summary><p>${esc(draft.reasoning)}</p></details>` : ""}
-        ${draft.approval_id ? `
-        <div class="approval-card__actions" style="margin-top:10px">
-          <form method="post" action="/approvals/${draft.approval_id}/approve">
-            <button type="submit" class="btn btn--success">อนุมัติ</button>
-          </form>
-          <form method="post" action="/approvals/${draft.approval_id}/reject">
-            <button type="submit" class="btn btn--danger">ไม่ใช้</button>
-          </form>
-        </div>
-        <div class="approval-card__actions approval-card__actions--secondary" style="margin-top:8px">
-          <form method="post" action="/approvals/${draft.approval_id}/edit">
-            <input type="text" name="edited_message" value="${esc(draft.message)}" required />
-            <button type="submit" class="btn btn--primary btn--small">แก้แล้วใช้</button>
-          </form>
-        </div>` : ""}
-      </div>`;
+  // 3. Content ideas
+  if (content_ideas.length) {
+    const sec = section("📝 ไอเดียโพสต์ / คอนเทนต์", "result-section--ideas");
+    const list = el_("ul", "ideas-list");
+    for (const idea of content_ideas) {
+      const li = document.createElement("li");
+      li.appendChild(document.createTextNode(idea));
+      list.appendChild(li);
+    }
+    sec.appendChild(list);
+    card.appendChild(sec);
   }
 
-  const tagHtml = agents_run.map(l => `<span class="tag">${esc(l)}</span>`).join("");
+  // 4. Draft message (Sales Assistant)
+  if (draft?.message) {
+    const sec = section("💬 ข้อความทักลูกค้า (ร่างจาก Sales Assistant)", "result-section--draft");
 
-  el.innerHTML = `
-    <div class="final-card__header">
-      <span class="final-card__title">📋 ผลสรุป Virtual Office ${tagHtml}</span>
-    </div>
-    ${questionsHtml}
-    ${notesHtml}
-    <div class="final-section">
-      <div class="section-label">สิ่งที่พบ (Key Findings)</div>
-      ${findingsHtml}
-    </div>
-    <div class="final-section">
-      <div class="section-label">แผนงาน (Action Plan)</div>
-      <div class="action-grid">
-        <div class="action-col action-col--founder"><div class="action-col__label">👤 Founder ต้องทำเอง</div>${founderHtml}</div>
-        <div class="action-col action-col--ai"><div class="action-col__label">🤖 AI จะทำต่อเอง</div>${aiHtml}</div>
-      </div>
-    </div>
-    ${missingHtml ? `<div class="final-section"><div class="section-label">ข้อมูลที่ยังขาด</div>${missingHtml}</div>` : ""}
-    ${draftHtml}`;
+    const box = el_("div", "draft-box");
+    box.textContent = draft.message;
+    sec.appendChild(box);
 
-  appendLog(el);
+    // Copy button
+    const copyBtn = el_("button", "copy-btn");
+    copyBtn.type = "button";
+    copyBtn.innerHTML = `📋 คัดลอกข้อความ`;
+    copyBtn.addEventListener("click", () => {
+      navigator.clipboard.writeText(draft.message).then(() => {
+        copyBtn.textContent = "✓ คัดลอกแล้ว";
+        copyBtn.classList.add("copy-btn--copied");
+        setTimeout(() => {
+          copyBtn.textContent = "📋 คัดลอกข้อความ";
+          copyBtn.classList.remove("copy-btn--copied");
+        }, 2000);
+      });
+    });
+    sec.appendChild(copyBtn);
 
-  // Hide the old static result — this streaming one replaces it
-  const staticResult = document.getElementById("static-result");
-  if (staticResult) staticResult.hidden = true;
+    // Approve / reject buttons
+    if (draft.approval_id) {
+      const actions = el_("div", "draft-approval");
+      actions.innerHTML = `
+        <form method="post" action="/approvals/${draft.approval_id}/approve">
+          <button type="submit" class="btn btn--success btn--sm">อนุมัติ — ใช้ตามนี้</button>
+        </form>
+        <form method="post" action="/approvals/${draft.approval_id}/reject">
+          <button type="submit" class="btn btn--danger btn--sm">ไม่ใช้</button>
+        </form>`;
+      sec.appendChild(actions);
+    }
+
+    if (draft.reasoning) {
+      const details = document.createElement("details");
+      details.className = "reasoning";
+      details.style.marginTop = "10px";
+      details.innerHTML = `<summary>เหตุผลที่เลือกมุมนี้</summary><p style="font-size:0.84rem;color:var(--muted)">${esc(draft.reasoning)}</p>`;
+      sec.appendChild(details);
+    }
+    card.appendChild(sec);
+  }
+
+  // 5. Founder actions
+  if (founder_actions.length) {
+    const sec = section("✅ ต้องทำตอนนี้", "result-section--actions");
+    const list = el_("ul", "result-list result-list--actions");
+    for (const action of founder_actions) {
+      const li = document.createElement("li");
+      li.textContent = action;
+      list.appendChild(li);
+    }
+    sec.appendChild(list);
+    card.appendChild(sec);
+  }
+
+  // 6. AI actions (compact, secondary)
+  if (ai_actions.length) {
+    const sec = section("🤖 AI จะทำต่อเอง");
+    sec.appendChild(ul_(ai_actions, "result-list"));
+    card.appendChild(sec);
+  }
+
+  // 7. Missing info (only if there's real missing data, not just LLM unavailable)
+  const realMissing = missing_info.filter(m => !m.includes("AI ไม่พร้อมใช้งาน"));
+  if (realMissing.length) {
+    const sec = section("⚠️ ข้อมูลที่ยังขาด");
+    sec.appendChild(ul_(realMissing, "result-list result-list--warn"));
+    card.appendChild(sec);
+  }
+
+  clearResult();
+  appendToResult(card);
 }
 
-function onStreamEnd() {
-  setSubmitting(false);
+// ─── Utilities ────────────────────────────────────────────────────────────────
+function section(label, extraClass = "") {
+  const sec = el_("div", `result-section ${extraClass}`.trim());
+  const lbl = el_("div", "section-label");
+  lbl.textContent = label;
+  sec.appendChild(lbl);
+  return sec;
 }
 
-// ─── Utilities ─────────────────────────────────────────────────────────────
-
-function showStreamPanel() {
-  const panel = document.getElementById("stream-panel");
-  if (panel) panel.hidden = false;
-  // Hide static result during streaming
-  const staticResult = document.getElementById("static-result");
-  if (staticResult) staticResult.hidden = true;
+function ul_(items, className) {
+  const list = el_("ul", className);
+  for (const item of items) {
+    const li = document.createElement("li");
+    li.textContent = item;
+    list.appendChild(li);
+  }
+  return list;
 }
 
-function clearStreamLog() {
-  const log = document.getElementById("stream-log");
-  if (log) log.innerHTML = "";
+function clearResult() {
+  const area = document.getElementById("result-area");
+  if (area) area.innerHTML = "";
 }
 
-function appendLog(el) {
-  const log = document.getElementById("stream-log");
-  if (log) {
-    log.appendChild(el);
+function appendToResult(el) {
+  const area = document.getElementById("result-area");
+  if (area) {
+    area.appendChild(el);
     el.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
 }
 
-function appendErrorBanner(msg) {
+function errorBanner(msg) {
   const el = el_("div", "error-banner");
-  el.innerHTML = `⚠️ ข้อผิดพลาด: ${esc(msg)}`;
-  appendLog(el);
+  el.textContent = `⚠️ ${msg}`;
+  return el;
 }
 
-function setSubmitting(submitting) {
+function setSubmitting(on) {
   const btn = document.getElementById("submit-btn");
   if (!btn) return;
-  btn.disabled = submitting;
-  btn.querySelector(".btn-text").hidden = submitting;
-  btn.querySelector(".btn-spinner").hidden = !submitting;
+  btn.disabled = on;
+  btn.querySelector(".btn-text").hidden = on;
+  btn.querySelector(".btn-spinner").hidden = !on;
 }
 
 function el_(tag, className) {
   const e = document.createElement(tag);
-  e.className = className;
+  if (className) e.className = className;
   return e;
 }
 
 function esc(str) {
   if (str == null) return "";
   return String(str)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }

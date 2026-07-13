@@ -4,18 +4,18 @@
 
 <div class="vo-layout">
 
-  <!-- ── INPUT PANEL ────────────────────────────────────────────── -->
-  <section class="vo-input-panel">
+  <!-- ── INPUT ─────────────────────────────────────────────────────────── -->
+  <section class="vo-input">
     <h1>Virtual Office</h1>
-    <p class="subtitle">แปะข้อความ โพสต์ หรือ Feedback ตรงนี้เลย — ทีม AI จะแบ่งงานกันวิเคราะห์และรายงานผลแบบ Real-time</p>
-
+    <p class="subtitle">แปะโพสต์ บทสนทนา หรือ Feedback — ทีม AI จะวิเคราะห์และวางแผนให้ทันที</p>
     <form id="office-form" class="input-form">
-      <textarea id="raw-text-input" name="raw_text" rows="6"
-        placeholder="แปะข้อความจาก Facebook, บทสนทนากับลีด, คำถามเรื่องฟีเจอร์, Feedback จากร้าน..." required>{{ latest_run.raw_text if latest_run else '' }}</textarea>
+      <textarea id="raw-text-input" name="raw_text" rows="5"
+        placeholder="เช่น: คอมเมนต์จาก Facebook กลุ่ม / บทสนทนากับลีด / Feedback จากร้าน / ปัญหาที่ลูกค้าเจอ..."
+        required>{{ latest_run.raw_text if latest_run else '' }}</textarea>
       <button type="submit" class="btn btn--primary btn--submit" id="submit-btn">
-        <span class="btn-text">ส่งให้ Virtual Office วิเคราะห์</span>
+        <span class="btn-text">วิเคราะห์</span>
         <span class="btn-spinner" hidden>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
             <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
           </svg>
         </span>
@@ -23,120 +23,87 @@
     </form>
   </section>
 
-  <!-- ── STREAM PANEL (shown while/after streaming) ────────────── -->
-  <section id="stream-panel" class="stream-panel" hidden>
-    <div id="stream-log" class="stream-log"></div>
-  </section>
+  <!-- ── PROGRESS (during streaming) ──────────────────────────────────── -->
+  <div id="progress-area" class="progress-area" hidden>
+    <div class="progress-bar-wrap"><div id="progress-bar" class="progress-bar"></div></div>
+    <div id="progress-agents" class="progress-agents"></div>
+  </div>
 
-  <!-- ── STATIC RESULT (shown on page load, hidden while streaming) -->
-  <section id="static-result" class="static-result {{ '' if latest_run else 'hidden' }}">
+  <!-- ── RESULT (streaming final + localStorage restore) ───────────────── -->
+  <div id="result-area"></div>
+
+  <!-- ── STATIC FALLBACK (page load from DB, hidden once JS runs) ──────── -->
+  <div id="static-result" class="{% if not latest_run %}hidden{% endif %}">
     {% if latest_run %}
+    <div class="result-card">
+      <div class="result-card__header">
+        <span class="result-card__title">📋 ผลวิเคราะห์ล่าสุด</span>
+        <time class="result-card__time">{{ latest_run.created_at.strftime('%d/%m/%y %H:%M') }}</time>
+      </div>
+
       {% if latest_run.questions %}
-      <div class="result-card result-card--attention" style="margin-bottom:16px">
-        <div class="result-card__title">💬 ทีม AI อยากถามคุณก่อนทำต่อ</div>
-        <ul class="result-list">
-          {% for q in latest_run.questions %}
-          <li><strong>{{ q.label }}</strong> — {{ q.question }}</li>
-          {% endfor %}
-        </ul>
-        <form method="post" action="/run/continue" class="stacked-form" style="margin-top:12px">
+      <div class="result-section result-section--attention">
+        <div class="section-label">💬 ทีม AI มีคำถาม</div>
+        {% for q in latest_run.questions %}
+        <p><strong>{{ q.label }}</strong>: {{ q.question }}</p>
+        {% endfor %}
+        <form method="post" action="/run/continue" class="stacked-form" style="margin-top:10px">
           <input type="hidden" name="previous_run_id" value="{{ latest_run.id }}" />
-          <textarea name="answer" rows="3" placeholder="ตอบคำถามด้านบน แล้วทีมจะทำงานต่อทันที..." required></textarea>
-          <button type="submit" class="btn btn--primary">ส่งคำตอบ ให้ทีมทำงานต่อ</button>
+          <textarea name="answer" rows="2" placeholder="ตอบคำถามด้านบน..." required></textarea>
+          <button type="submit" class="btn btn--primary btn--sm">ส่งคำตอบ</button>
         </form>
       </div>
       {% endif %}
 
-      {% if latest_run.team_notes %}
-      <div class="result-card" style="margin-bottom:16px">
-        <div class="result-card__title">💡 ข้อสังเกต/ไอเดียที่ทีม AI เจอระหว่างทาง</div>
-        <ul class="result-list">
-          {% for n in latest_run.team_notes %}
-          <li><strong>{{ n.label }}</strong>: {{ n.note }}</li>
-          {% endfor %}
-        </ul>
+      {% if latest_run.key_findings %}
+      <div class="result-section">
+        <div class="section-label">📊 สิ่งที่วิเคราะห์พบ</div>
+        <ul class="result-list">{% for f in latest_run.key_findings %}<li>{{ f }}</li>{% endfor %}</ul>
       </div>
       {% endif %}
 
-      <div class="result-card">
-        <div class="result-card__header">
-          <div class="result-card__title">📋 ผลวิเคราะห์ล่าสุด
-            {% for label in latest_run.agents_run %}<span class="tag">{{ label }}</span>{% endfor %}
-            {% if not latest_run.agents_run %}<span class="tag">ไม่มี Agent ที่เกี่ยวข้อง</span>{% endif %}
-          </div>
-          <time class="result-card__time">{{ latest_run.created_at.strftime('%d/%m/%y %H:%M') }}</time>
-        </div>
-
-        <h3 class="section-label">สิ่งที่พบ (Key Findings)</h3>
-        {% if latest_run.key_findings %}
-          <ul class="result-list">{% for f in latest_run.key_findings %}<li>{{ f }}</li>{% endfor %}</ul>
-        {% else %}
-          <div class="empty-state">ยังไม่พบประเด็นที่ชัดเจนจากข้อมูลนี้</div>
-        {% endif %}
-
-        <h3 class="section-label">แผนงาน (Action Plan)</h3>
-        <div class="action-grid">
-          <div class="action-col action-col--founder">
-            <div class="action-col__label">👤 Founder ต้องทำเอง</div>
-            {% if latest_run.founder_actions %}
-              <ul class="result-list">{% for a in latest_run.founder_actions %}<li>{{ a }}</li>{% endfor %}</ul>
-            {% else %}<span class="muted-text">ไม่มี</span>{% endif %}
-          </div>
-          <div class="action-col action-col--ai">
-            <div class="action-col__label">🤖 AI จะทำต่อเอง</div>
-            {% if latest_run.ai_actions %}
-              <ul class="result-list">{% for a in latest_run.ai_actions %}<li>{{ a }}</li>{% endfor %}</ul>
-            {% else %}<span class="muted-text">ไม่มี</span>{% endif %}
-          </div>
-        </div>
-
-        {% if latest_run.missing_info %}
-        <h3 class="section-label">ข้อมูลที่ยังขาด</h3>
-        <ul class="result-list result-list--warn">{% for item in latest_run.missing_info %}<li>{{ item }}</li>{% endfor %}</ul>
-        {% endif %}
+      {% if latest_run.founder_actions %}
+      <div class="result-section">
+        <div class="section-label">✅ ต้องทำตอนนี้</div>
+        <ul class="result-list result-list--actions">{% for a in latest_run.founder_actions %}<li>{{ a }}</li>{% endfor %}</ul>
       </div>
+      {% endif %}
+    </div>
     {% endif %}
-  </section>
+  </div>
 
-  <!-- ── PENDING APPROVALS ──────────────────────────────────────── -->
-  <section class="approvals-section">
-    <h2 class="section-heading">ข้อความร่างที่รอตรวจ</h2>
-    {% if not pending_approvals %}
-      <div class="empty-state">ไม่มีข้อความร่างที่รอตรวจตอนนี้</div>
-    {% else %}
-    <div class="card-list">
+  <!-- ── PENDING APPROVALS ──────────────────────────────────────────────── -->
+  {% if pending_approvals %}
+  <details class="approvals-details">
+    <summary class="approvals-summary">✏️ ข้อความร่างที่รออนุมัติ ({{ pending_approvals|length }})</summary>
+    <div class="card-list" style="margin-top:12px">
       {% for approval in pending_approvals %}
       <article class="approval-card">
         <div class="approval-card__header">
-          <strong>ร่างข้อความทัก Messenger</strong>
+          <strong>ร่างทัก Messenger</strong>
           <time>{{ approval.created_at.strftime('%d/%m/%y %H:%M') }}</time>
         </div>
-        <p>{{ approval.draft_message }}</p>
+        <p class="draft-preview">{{ approval.draft_message }}</p>
         {% if approval.reasoning %}
-        <details class="reasoning">
-          <summary>เหตุผลที่ AI เลือกมุมนี้</summary>
-          <p>{{ approval.reasoning }}</p>
-        </details>
+        <details class="reasoning"><summary>เหตุผลที่เลือกมุมนี้</summary><p>{{ approval.reasoning }}</p></details>
         {% endif %}
         <div class="approval-card__actions">
           <form method="post" action="/approvals/{{ approval.id }}/approve">
-            <button type="submit" class="btn btn--success">อนุมัติ (ใช้ตามนี้)</button>
+            <button type="submit" class="btn btn--success btn--sm">อนุมัติ</button>
           </form>
           <form method="post" action="/approvals/{{ approval.id }}/reject">
-            <button type="submit" class="btn btn--danger">ไม่ใช้</button>
+            <button type="submit" class="btn btn--danger btn--sm">ไม่ใช้</button>
           </form>
-        </div>
-        <div class="approval-card__actions approval-card__actions--secondary">
-          <form method="post" action="/approvals/{{ approval.id }}/edit">
+          <form method="post" action="/approvals/{{ approval.id }}/edit" style="flex:1">
             <input type="text" name="edited_message" value="{{ approval.draft_message }}" required />
-            <button type="submit" class="btn btn--primary btn--small">แก้แล้วใช้อันนี้แทน</button>
+            <button type="submit" class="btn btn--primary btn--sm" style="margin-top:6px">แก้แล้วใช้</button>
           </form>
         </div>
       </article>
       {% endfor %}
     </div>
-    {% endif %}
-  </section>
+  </details>
+  {% endif %}
 
-</div><!-- /.vo-layout -->
+</div>
 {% endblock %}
