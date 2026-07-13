@@ -50,9 +50,9 @@ A private single-page tool for the CSC founder: paste a Facebook comment, lead c
 ## Setup status (last verified 2026-07-13)
 
 - Ran `uv sync` from the repo root to (re)create `.pythonlibs` after the import — required every time the project is freshly cloned since the venv isn't committed.
-- Confirmed `NEON_DATABASE_URL` and `GITHUB_MODELS_TOKEN` are set as Replit Secrets.
+- Re-collected `NEON_DATABASE_URL` and `GITHUB_MODELS_TOKEN` via Replit Secrets (they don't carry over on re-import) and confirmed both are set.
 - Ran `cd beauty_agent_system && /home/runner/workspace/.pythonlibs/bin/python -m alembic upgrade head` — schema is current.
-- Restarted the `Beauty Agent System` workflow; verified `GET /` returns 200 with the rendered Virtual Office page.
+- Restarted the `Beauty Agent System` workflow; verified `GET /` returns 200.
 - Two unrelated scaffold artifacts (`artifacts/api-server`, `artifacts/mockup-sandbox`) exist in this repo but were not created for this project and are not part of the Beauty Agent System — they have no installed dependencies and are out of scope for this app.
 
 ## User preferences
