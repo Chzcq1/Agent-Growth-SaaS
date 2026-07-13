@@ -52,6 +52,8 @@ async def run_office(request: Request, raw_text: str = Form(...), db: Session = 
     run = OfficeRun(
         raw_text=raw_text,
         agents_run=result["agents_run"],
+        plan_trace=result.get("plan_trace"),
+        review_trace=result.get("review_trace"),
         key_findings=result["key_findings"],
         founder_actions=result["founder_actions"],
         ai_actions=result["ai_actions"],

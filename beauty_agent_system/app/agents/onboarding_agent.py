@@ -9,7 +9,11 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from app.agents._json_utils import empty_result, parse_json_object
-from app.agents.prompts import ONBOARDING_AGENT_SYSTEM_PROMPT, ONBOARDING_AGENT_USER_TEMPLATE
+from app.agents.prompts import (
+    ONBOARDING_AGENT_SYSTEM_PROMPT,
+    ONBOARDING_AGENT_USER_TEMPLATE,
+    REWORK_FEEDBACK_TEMPLATE,
+)
 from app.llm_client import LLMUnavailable, call_llm
 
 AGENT_NAME = "onboarding_agent"
@@ -26,13 +30,16 @@ def matches(text: str) -> bool:
     return any(k in lowered for k in KEYWORDS)
 
 
-async def run(db: Session, raw_text: str) -> dict:
+async def run(db: Session, raw_text: str, feedback: str | None = None) -> dict:
+    user_prompt = ONBOARDING_AGENT_USER_TEMPLATE.format(raw_text=raw_text)
+    if feedback:
+        user_prompt += REWORK_FEEDBACK_TEMPLATE.format(feedback=feedback)
     try:
         raw = await call_llm(
             db,
             AGENT_NAME,
             ONBOARDING_AGENT_SYSTEM_PROMPT,
-            ONBOARDING_AGENT_USER_TEMPLATE.format(raw_text=raw_text),
+            user_prompt,
         )
         data = parse_json_object(raw)
     except (LLMUnavailable, ValueError) as exc:

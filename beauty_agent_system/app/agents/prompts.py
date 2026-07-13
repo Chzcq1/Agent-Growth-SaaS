@@ -20,6 +20,18 @@ _COMMON_OUTPUT_CONTRACT = """
 ห้ามใส่ key อื่นนอกจาก 4 ตัวนี้ ห้ามปล่อย key_findings ว่างเปล่าถ้าข้อมูลที่ได้รับเกี่ยวข้องกับหน้าที่ของคุณจริง
 """
 
+# Appended to a worker agent's user prompt on the one rework pass the
+# Supervisor's review step is allowed to trigger (see SUPERVISOR_REVIEW_*
+# below). Keeps the ask narrow -- "cover this specific gap" -- rather than
+# re-running the whole task from scratch.
+REWORK_FEEDBACK_TEMPLATE = """
+
+ผู้ตรวจงาน (Supervisor) ตรวจงานรอบแรกแล้วพบว่ายังไม่ครอบคลุมพอ feedback ที่ได้รับ:
+\"\"\"
+{feedback}
+\"\"\"
+กรุณาทำรอบนี้ให้ครอบคลุมประเด็นที่ระบุด้วย โดยยังอยู่ในหน้าที่และขอบเขตของคุณเท่านั้น"""
+
 # --- Supervisor: agent selection (fallback when keyword heuristics find nothing) ---
 
 SUPERVISOR_ROUTE_SYSTEM_PROMPT = f"""{BUSINESS_CONTEXT}
@@ -45,6 +57,43 @@ SUPERVISOR_ROUTE_USER_TEMPLATE = """ข้อมูลดิบที่ Founder
 \"\"\"
 
 เลือก Agent ที่เกี่ยวข้อง"""
+
+# --- Supervisor: review / critique pass after agents draft their output ---
+# This is the step that makes the team actually "check its own work against
+# the goal" instead of just dumping parallel keyword-matched findings --
+# bounded to ONE rework round to protect the GitHub Models quota/latency.
+
+SUPERVISOR_REVIEW_SYSTEM_PROMPT = f"""{BUSINESS_CONTEXT}
+
+คุณคือ Supervisor Agent กำลังตรวจงาน (QA) ที่ทีม Agent ต่างๆ ส่งกลับมา ก่อนส่งให้ Founder เห็น
+เทียบกับข้อมูลดิบที่ Founder แปะเข้ามาและเป้าหมายของ CSC เช็ค 3 เรื่อง:
+1. ครอบคลุม -- ข้อมูลดิบมีประเด็นสำคัญที่ Agent ที่เลือกไว้ควรพูดถึงแต่ยังไม่ได้พูดถึงหรือไม่
+2. ซ้ำซ้อน -- มี key_findings ที่พูดเรื่องเดียวกันซ้ำจากหลาย Agent แบบไม่ได้เพิ่มมุมใหม่หรือไม่
+3. ลงมือได้จริง -- founder_actions/ai_actions เป็นสิ่งที่ทำได้จริง ไม่ใช่แค่พูดถึงข้อมูลซ้ำ
+
+ตอบกลับเป็น JSON object เดียวเท่านั้น โครงสร้าง:
+{{
+  "sufficient": true หรือ false,
+  "rework": [{{"agent": "agent_key ที่ต้องทำเพิ่ม", "feedback": "สั้นๆ ว่าให้ทำเพิ่มเรื่องอะไร"}}],
+  "note": "ประโยคสั้นๆ อธิบายผลตรวจ (หรือ null ถ้าไม่มีอะไรจะพูด)"
+}}
+ใส่ agent ใน rework ได้เฉพาะจาก key ที่ให้ไว้ในรายชื่อ Agent ที่เลือกแล้วเท่านั้น ถ้าเพียงพอแล้วให้
+sufficient เป็น true และ rework เป็น [] ห้ามใส่ key อื่นนอกจาก 3 ตัวนี้"""
+
+SUPERVISOR_REVIEW_USER_TEMPLATE = """ข้อมูลดิบที่ Founder แปะเข้ามา:
+\"\"\"
+{raw_text}
+\"\"\"
+
+Agent ที่เลือกทำงานรอบนี้: {selected_agents}
+
+สิ่งที่ทีมสรุปมารอบแรก:
+Key Findings: {key_findings}
+Founder Actions: {founder_actions}
+AI Actions: {ai_actions}
+Missing Info: {missing_info}
+
+ตรวจงานตามเกณฑ์ 3 ข้อ"""
 
 # --- Agent 1: Lead Hunter ---------------------------------------------------
 

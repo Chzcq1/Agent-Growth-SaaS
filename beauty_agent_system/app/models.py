@@ -120,6 +120,8 @@ class OfficeRun(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     raw_text: Mapped[str] = mapped_column(Text, nullable=False)
     agents_run: Mapped[list] = mapped_column(JSON, default=list)
+    plan_trace: Mapped[dict | None] = mapped_column(JSON)
+    review_trace: Mapped[dict | None] = mapped_column(JSON)
     key_findings: Mapped[list] = mapped_column(JSON, default=list)
     founder_actions: Mapped[list] = mapped_column(JSON, default=list)
     ai_actions: Mapped[list] = mapped_column(JSON, default=list)

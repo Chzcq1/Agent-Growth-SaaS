@@ -17,6 +17,13 @@ def parse_json_object(raw: str) -> dict:
     return json.loads(text)
 
 
+def empty_review() -> dict:
+    """Fallback shape when the review/critique LLM call is unavailable or
+    unparsable -- default to 'sufficient' so a broken review step never
+    blocks the founder from seeing the agents' draft output."""
+    return {"sufficient": True, "rework": [], "note": None}
+
+
 def empty_result(agent_name: str, label_th: str, *, missing_info: list[str]) -> dict:
     """Fallback shape used whenever the LLM is unavailable or returns
     unparsable output -- never fabricate findings, just say what's missing."""

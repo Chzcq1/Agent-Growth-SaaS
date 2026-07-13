@@ -9,7 +9,11 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from app.agents._json_utils import empty_result, parse_json_object
-from app.agents.prompts import SALES_ASSISTANT_SYSTEM_PROMPT, SALES_ASSISTANT_USER_TEMPLATE
+from app.agents.prompts import (
+    REWORK_FEEDBACK_TEMPLATE,
+    SALES_ASSISTANT_SYSTEM_PROMPT,
+    SALES_ASSISTANT_USER_TEMPLATE,
+)
 from app.llm_client import LLMUnavailable, call_llm
 from app.research import get_verified_case_study
 
@@ -27,17 +31,20 @@ def matches(text: str) -> bool:
     return any(k in lowered for k in KEYWORDS)
 
 
-async def run(db: Session, raw_text: str) -> dict:
+async def run(db: Session, raw_text: str, feedback: str | None = None) -> dict:
     case_study = get_verified_case_study(db)
+    user_prompt = SALES_ASSISTANT_USER_TEMPLATE.format(
+        raw_text=raw_text,
+        case_study=case_study["text"] if case_study else "ไม่มี",
+    )
+    if feedback:
+        user_prompt += REWORK_FEEDBACK_TEMPLATE.format(feedback=feedback)
     try:
         raw = await call_llm(
             db,
             AGENT_NAME,
             SALES_ASSISTANT_SYSTEM_PROMPT,
-            SALES_ASSISTANT_USER_TEMPLATE.format(
-                raw_text=raw_text,
-                case_study=case_study["text"] if case_study else "ไม่มี",
-            ),
+            user_prompt,
         )
         data = parse_json_object(raw)
     except (LLMUnavailable, ValueError) as exc:

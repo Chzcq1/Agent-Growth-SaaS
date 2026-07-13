@@ -13,6 +13,33 @@
 </form>
 
 {% if latest_run %}
+{% if latest_run.plan_trace %}
+<article class="briefing-card" style="margin-top: 24px;">
+  <h2>ทีม AI กำลังทำงานร่วมกัน</h2>
+  <p class="subtitle">{{ latest_run.plan_trace.goal }}</p>
+  <ul>
+    {% for item in latest_run.plan_trace.assignments %}
+    <li><strong>{{ item.label }}</strong> -- {{ item.task }}</li>
+    {% endfor %}
+  </ul>
+  {% if latest_run.review_trace %}
+  <details class="reasoning" open>
+    <summary>ผลตรวจงาน (QA) ก่อนสรุปให้ Founder</summary>
+    {% if latest_run.review_trace.note %}<p>{{ latest_run.review_trace.note }}</p>{% endif %}
+    {% if latest_run.review_trace.rework %}
+      <p>พบว่ายังไม่ครอบคลุมพอ จึงให้ทำเพิ่มอีกรอบ:</p>
+      <ul>
+        {% for item in latest_run.review_trace.rework %}
+        <li><strong>{{ item.label }}</strong>: {{ item.feedback }}</li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p>ตรวจแล้วครอบคลุมพอในรอบแรก ไม่ต้องทำซ้ำ</p>
+    {% endif %}
+  </details>
+  {% endif %}
+</article>
+{% endif %}
 <article class="briefing-card" style="margin-top: 24px;">
   <div class="approval-card__header">
     <div>
