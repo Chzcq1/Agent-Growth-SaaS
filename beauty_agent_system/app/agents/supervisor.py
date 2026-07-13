@@ -50,6 +50,7 @@ from app.agents.prompts import (
 )
 from app.business_context import AGENT_TASK_TH, CSC_GOAL_TH
 from app.llm_client import LLMUnavailable, call_llm
+from app.memory import memory_note as _memory_note
 from app.models import AgentFeedback, OfficeRun, PendingApproval
 
 logger = logging.getLogger("beauty_agent_system.supervisor")
@@ -346,6 +347,9 @@ async def run_office(db: Session, raw_text: str) -> dict:
     feedback_note = _recent_run_feedback_note(db)
     if feedback_note:
         key_findings.append(f"[Supervisor] {feedback_note}")
+    mem_note = _memory_note(db, raw_text)
+    if mem_note:
+        key_findings.append(f"[Supervisor] {mem_note}")
 
     questions, team_notes = _collect_questions_and_notes(list(results_by_agent.values()))
 
@@ -566,6 +570,9 @@ async def stream_run_office(db: Session, raw_text: str):
     feedback_note = _recent_run_feedback_note(db)
     if feedback_note:
         key_findings.append(f"[Supervisor] {feedback_note}")
+    mem_note = _memory_note(db, raw_text)
+    if mem_note:
+        key_findings.append(f"[Supervisor] {mem_note}")
 
     questions, team_notes = _collect_questions_and_notes(
         list(results_by_agent.values())
