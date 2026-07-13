@@ -2,7 +2,9 @@
 
 Answers strictly from the Knowledge Base (RAG-only, no memory answers). If no
 KB match is found (or the match looks like a complex bug report), it opens a
-support ticket for the admin instead of guessing.
+support ticket for the admin instead of guessing. A found KB answer is never
+sent automatically -- it is queued in ``pending_approvals`` (see
+``app/routers/webhook.py``) so the founder can review and send it manually.
 """
 from __future__ import annotations
 

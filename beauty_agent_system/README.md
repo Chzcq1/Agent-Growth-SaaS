@@ -14,8 +14,8 @@ rest of this repo -- it is meant to be deployed to **Render**, backed by a
 
 ```
 Chatwoot webhook -> Supervisor (classify) -> worker agent -> Supervisor (validate) ->
-    -> KB-answered support question -> auto-sent via Chatwoot
-    -> everything else (sales/follow-up, unclear cases) -> pending_approvals (Founder reviews)
+    -> everything (KB-answered support questions, sales/follow-up, unclear cases)
+       -> pending_approvals (Founder reviews and sends the reply manually)
 ```
 
 - **Agent 1 -- Lead Scraper & Analyst** (`app/agents/lead_scraper.py`): fetches

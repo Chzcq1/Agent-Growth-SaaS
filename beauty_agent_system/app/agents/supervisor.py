@@ -57,9 +57,12 @@ def validate_output(state: AgentState) -> AgentState:
         notes.append("sales/follow-up draft forced into approval queue")
     elif state.get("agent_name") == "support_agent":
         if state.get("kb_answer_found"):
-            state["requires_approval"] = False
-            state["auto_send"] = True
-            notes.append("KB match found -- auto-send allowed")
+            # The founder handles all customer chat manually (no live
+            # Chatwoot connection yet), so even a confident KB match is
+            # queued for review/copy instead of being sent automatically.
+            state["requires_approval"] = True
+            state["auto_send"] = False
+            notes.append("KB match found -- drafted for founder to review and send manually")
         else:
             state["requires_approval"] = False
             state["auto_send"] = False

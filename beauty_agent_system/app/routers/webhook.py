@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.agents.graph import run_graph
 from app.chatwoot_client import send_message, verify_webhook_signature
 from app.database import get_db
-from app.models import Lead
+from app.models import Lead, PendingApproval
 
 logger = logging.getLogger("beauty_agent_system.webhook")
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
@@ -69,6 +69,25 @@ async def chatwoot_webhook(request: Request, db: Session = Depends(get_db)) -> d
     if state.get("auto_send") and state.get("draft_message"):
         await send_message(conversation_id=conversation_id, shop_id=lead.shop_id, text=state["draft_message"])
         lead.conversation_history = [*(lead.conversation_history or []), {"role": "bot", "content": state["draft_message"]}]
+        db.commit()
+    elif (
+        state.get("requires_approval")
+        and state.get("draft_message")
+        and state.get("agent_name") == "support_agent"
+    ):
+        # strategic_closer writes its own PendingApproval row (with LLM
+        # reasoning) inside app/agents/strategic_closer.py. support_agent
+        # has no such step, so this is the only place a KB-answered
+        # question gets queued for the founder to review and send by hand.
+        db.add(
+            PendingApproval(
+                shop_id=lead.shop_id,
+                agent_name="support_agent",
+                draft_message=state["draft_message"],
+                reasoning="ตอบจากคลังความรู้ (Knowledge Base) -- โปรดตรวจสอบก่อนส่งให้ลูกค้า",
+                status="pending",
+            )
+        )
         db.commit()
 
     return {
