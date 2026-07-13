@@ -156,6 +156,24 @@ textarea, input[type=text], select {
 
 .recommendation { font-size: 0.9rem; }
 
+.update-card, .task-card, .briefing-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; }
+.update-card__note { color: var(--muted); }
+.update-card__finding { font-weight: 600; }
+.reply-suggestion { background: #f6f2ea; border-radius: 10px; padding: 12px 14px; margin-top: 10px; }
+.reply-suggestion strong { display: block; margin-bottom: 4px; font-size: 0.8rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
+.reply-suggestion p { margin: 0; white-space: pre-wrap; }
+
+.task-chip { margin-top: 10px; font-size: 0.85rem; color: var(--muted); }
+.task-chip--done { text-decoration: line-through; }
+
+.tag--needs-reply { background: #f5e2da; color: var(--accent); margin-left: 6px; }
+
+.task-card--overdue { border-color: var(--danger); }
+.task-card--today { border-color: var(--warn); }
+.task-card--done { opacity: 0.6; }
+
+.briefing-card__body { white-space: pre-wrap; margin-top: 10px; line-height: 1.6; }
+
 @media (max-width: 640px) {
   .approval-card__actions--secondary { flex-direction: column; }
   .data-table { display: block; overflow-x: auto; }

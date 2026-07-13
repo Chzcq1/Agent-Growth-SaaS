@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% block title %}Leads Overview{% endblock %}
+{% block title %}ลูกค้า/ลีด{% endblock %}
 {% block content %}
-<h1>Leads Overview</h1>
+<h1>ลูกค้า/ลีด</h1>
 
 <form method="get" class="filter-bar">
   <select name="status" onchange="this.form.submit()">
-    <option value="" {{ 'selected' if not active_status else '' }}>All statuses</option>
+    <option value="" {{ 'selected' if not active_status else '' }}>ทุกสถานะ</option>
     {% for s in statuses %}
       <option value="{{ s }}" {{ 'selected' if s == active_status else '' }}>{{ s }}</option>
     {% endfor %}
@@ -14,7 +14,7 @@
 
 <table class="data-table">
   <thead>
-    <tr><th>Shop</th><th>Status</th><th>Pain points</th><th>Last contact</th><th>Next follow-up</th></tr>
+    <tr><th>ร้าน</th><th>สถานะ</th><th>ปัญหาที่พบ</th><th>ติดต่อล่าสุด</th><th>ติดตามครั้งถัดไป</th></tr>
   </thead>
   <tbody>
     {% for lead in leads %}
@@ -28,9 +28,9 @@
         {% if lead.pain_points and lead.pain_points.get('summary') %}
           {{ lead.pain_points.get('summary') }}
         {% elif lead.pain_points and lead.pain_points.get('status') == 'insufficient_data' %}
-          <em>insufficient data</em>
+          <em>ข้อมูลไม่พอสำหรับวิเคราะห์</em>
         {% else %}
-          <em>not analyzed yet</em>
+          <em>ยังไม่ได้วิเคราะห์</em>
         {% endif %}
       </td>
       <td>{{ lead.last_contacted_date.strftime('%Y-%m-%d') if lead.last_contacted_date else '—' }}</td>
@@ -40,11 +40,11 @@
   </tbody>
 </table>
 
-<h2>Add a lead</h2>
+<h2>เพิ่มลูกค้า/ลีดใหม่</h2>
 <form method="post" action="/admin/leads" class="inline-form">
-  <input type="text" name="shop_name" placeholder="Shop name" required />
-  <input type="text" name="facebook_url" placeholder="Facebook page URL" />
+  <input type="text" name="shop_name" placeholder="ชื่อร้าน" required />
+  <input type="text" name="facebook_url" placeholder="ลิงก์เพจ Facebook" />
   <input type="text" name="line_id" placeholder="Line ID" />
-  <button type="submit" class="btn btn--primary">Add lead</button>
+  <button type="submit" class="btn btn--primary">เพิ่ม</button>
 </form>
 {% endblock %}

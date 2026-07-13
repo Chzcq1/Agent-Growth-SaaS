@@ -1,33 +1,33 @@
 {% extends "base.html" %}
-{% block title %}System Health{% endblock %}
+{% block title %}สถานะระบบ{% endblock %}
 {% block content %}
-<h1>System Health</h1>
+<h1>สถานะระบบ</h1>
 
 <div class="stat-grid">
   <div class="stat-card {{ 'stat-card--warn' if sleep_state.sleeping else 'stat-card--ok' }}">
-    <span class="stat-label">Bot status</span>
-    <span class="stat-value">{{ 'Sleeping' if sleep_state.sleeping else 'Active' }}</span>
+    <span class="stat-label">สถานะบอท</span>
+    <span class="stat-value">{{ 'พักอยู่' if sleep_state.sleeping else 'ทำงานอยู่' }}</span>
     {% if sleep_state.sleeping %}
-      <span class="stat-detail">Wakes at {{ sleep_state.wake_at.strftime('%Y-%m-%d %H:%M UTC') }}</span>
+      <span class="stat-detail">จะกลับมาทำงาน {{ sleep_state.wake_at.strftime('%Y-%m-%d %H:%M UTC') }}</span>
       <span class="stat-detail">{{ sleep_state.reason }}</span>
     {% endif %}
   </div>
   <div class="stat-card">
-    <span class="stat-label">Requests today</span>
+    <span class="stat-label">จำนวนคำขอวันนี้</span>
     <span class="stat-value">{{ quota.total_requests_today }}</span>
   </div>
   <div class="stat-card">
-    <span class="stat-label">Rate-limited today</span>
+    <span class="stat-label">ถูกจำกัดอัตราวันนี้</span>
     <span class="stat-value">{{ quota.rate_limited_today }}</span>
   </div>
   <div class="stat-card">
-    <span class="stat-label">Errors today</span>
+    <span class="stat-label">ข้อผิดพลาดวันนี้</span>
     <span class="stat-value">{{ quota.errors_today }}</span>
   </div>
   <div class="stat-card">
-    <span class="stat-label">Configured limits</span>
-    <span class="stat-value">{{ max_per_minute }}/min</span>
-    <span class="stat-detail">max {{ max_concurrency }} concurrent</span>
+    <span class="stat-label">ขีดจำกัดที่ตั้งไว้</span>
+    <span class="stat-value">{{ max_per_minute }}/นาที</span>
+    <span class="stat-detail">สูงสุด {{ max_concurrency }} รายการพร้อมกัน</span>
   </div>
 </div>
 {% endblock %}

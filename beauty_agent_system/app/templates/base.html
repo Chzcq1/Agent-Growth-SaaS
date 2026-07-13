@@ -3,19 +3,22 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>{% block title %}Beauty SaaS Virtual Office{% endblock %}</title>
+  <title>{% block title %}ทีมงานเสมือน -- Beauty SaaS{% endblock %}</title>
   <link rel="stylesheet" href="/static/css/style.css" />
 </head>
 <body>
   <div class="shell">
     <header class="topbar">
-      <div class="brand">Virtual Office <span>Beauty SaaS Growth &amp; Support</span></div>
+      <div class="brand">ทีมงานเสมือน <span>ระบบเติบโตและดูแลลูกค้า Beauty SaaS</span></div>
       <nav>
-        <a href="/admin/approvals" class="{{ 'active' if active_nav == 'approvals' else '' }}">Pending Approvals</a>
-        <a href="/admin/leads" class="{{ 'active' if active_nav == 'leads' else '' }}">Leads</a>
-        <a href="/admin/system-health" class="{{ 'active' if active_nav == 'system_health' else '' }}">System Health</a>
-        <a href="/admin/insights" class="{{ 'active' if active_nav == 'insights' else '' }}">Weekly Insights</a>
-        <a href="/admin/knowledge-base" class="{{ 'active' if active_nav == 'knowledge_base' else '' }}">Knowledge Base</a>
+        <a href="/admin/daily-summary" class="{{ 'active' if active_nav == 'daily_summary' else '' }}">สรุปประจำวัน</a>
+        <a href="/admin/updates" class="{{ 'active' if active_nav == 'updates' else '' }}">แจ้งเหตุการณ์</a>
+        <a href="/admin/tasks" class="{{ 'active' if active_nav == 'tasks' else '' }}">งานที่ต้องทำ</a>
+        <a href="/admin/approvals" class="{{ 'active' if active_nav == 'approvals' else '' }}">คำตอบที่รอตรวจ</a>
+        <a href="/admin/leads" class="{{ 'active' if active_nav == 'leads' else '' }}">ลูกค้า/ลีด</a>
+        <a href="/admin/knowledge-base" class="{{ 'active' if active_nav == 'knowledge_base' else '' }}">คลังความรู้</a>
+        <a href="/admin/insights" class="{{ 'active' if active_nav == 'insights' else '' }}">สรุปผลรายสัปดาห์</a>
+        <a href="/admin/system-health" class="{{ 'active' if active_nav == 'system_health' else '' }}">สถานะระบบ</a>
       </nav>
     </header>
     <main class="content">

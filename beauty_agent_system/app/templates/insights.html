@@ -1,25 +1,25 @@
 {% extends "base.html" %}
-{% block title %}Weekly Insights{% endblock %}
+{% block title %}สรุปผลรายสัปดาห์{% endblock %}
 {% block content %}
-<h1>Weekly Insights</h1>
-<p class="subtitle">Generated every Monday from the past week's approve/reject/edit feedback. Nothing here changes agent prompts automatically -- apply what you agree with by hand.</p>
+<h1>สรุปผลรายสัปดาห์</h1>
+<p class="subtitle">สร้างทุกวันจันทร์จากผลตอบรับการอนุมัติ/ปฏิเสธ/แก้ไขในสัปดาห์ที่ผ่านมา -- ไม่มีการเปลี่ยนคำสั่ง AI อัตโนมัติ ถ้าเห็นด้วยให้นำไปปรับเองได้</p>
 
 {% if not insights %}
-  <div class="empty-state">No insight reports yet -- check back after the first week of activity.</div>
+  <div class="empty-state">ยังไม่มีรายงาน -- รอให้มีการใช้งานครบสัปดาห์แรกก่อน</div>
 {% endif %}
 
 <div class="card-list">
   {% for insight in insights %}
   <article class="insight-card {{ 'insight-card--applied' if insight.applied else '' }}">
-    <time>Week of {{ insight.week_start.strftime('%Y-%m-%d') }}</time>
+    <time>สัปดาห์ของ {{ insight.week_start.strftime('%Y-%m-%d') }}</time>
     <p>{{ insight.summary_text }}</p>
-    <p class="recommendation"><strong>Recommendation:</strong> {{ insight.recommendation }}</p>
+    <p class="recommendation"><strong>ข้อเสนอแนะ:</strong> {{ insight.recommendation }}</p>
     {% if not insight.applied %}
     <form method="post" action="/admin/insights/{{ insight.id }}/apply">
-      <button type="submit" class="btn btn--primary">Mark as applied</button>
+      <button type="submit" class="btn btn--primary">นำไปใช้แล้ว</button>
     </form>
     {% else %}
-      <span class="tag tag--applied">Applied</span>
+      <span class="tag tag--applied">นำไปใช้แล้ว</span>
     {% endif %}
   </article>
   {% endfor %}

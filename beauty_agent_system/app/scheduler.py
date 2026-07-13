@@ -13,7 +13,7 @@ from datetime import datetime, timedelta, timezone
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import select
 
-from app.agents import strategic_closer
+from app.agents import planner_agent, strategic_closer
 from app.config import get_settings
 from app.database import get_session_factory
 from app.models import AgentFeedback, Lead, LeadStatus, PendingApproval, WeeklyInsight
@@ -84,6 +84,20 @@ async def run_weekly_insights() -> None:
         db.close()
 
 
+async def run_daily_briefing() -> None:
+    db = get_session_factory()()
+    try:
+        briefing = await planner_agent.generate_daily_briefing(db)
+        logger.info(
+            "daily briefing generated: %s overdue, %s due today, %s new findings",
+            briefing.tasks_overdue_count,
+            briefing.tasks_due_count,
+            briefing.new_findings_count,
+        )
+    finally:
+        db.close()
+
+
 def start_scheduler() -> AsyncIOScheduler:
     settings = get_settings()
     scheduler = AsyncIOScheduler()
@@ -92,6 +106,13 @@ def start_scheduler() -> AsyncIOScheduler:
         "cron",
         hour=settings.followup_scan_hour_utc,
         id="daily_followups",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        run_daily_briefing,
+        "cron",
+        hour=settings.daily_briefing_hour_utc,
+        id="daily_briefing",
         replace_existing=True,
     )
     scheduler.add_job(

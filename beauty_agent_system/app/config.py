@@ -34,6 +34,11 @@ class Settings(BaseSettings):
     followup_batch_delay_seconds: float = 3.0
     followup_scan_hour_utc: int = 3  # runs once a day at this UTC hour
 
+    # --- Daily briefing scheduler ------------------------------------------
+    # Default 1 UTC == 08:00 Asia/Bangkok (UTC+7), so the founder has a
+    # briefing waiting when the shop day starts.
+    daily_briefing_hour_utc: int = 1
+
     # --- Research cache ---------------------------------------------------
     research_cache_ttl_days: int = 7
 
