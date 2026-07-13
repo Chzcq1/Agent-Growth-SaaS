@@ -36,6 +36,7 @@ from app.agents import (
     content_strategist_agent,
     customer_success_agent,
     demo_agent,
+    general_assistant,
     lead_hunter,
     onboarding_agent,
     product_analyst_agent,
@@ -51,7 +52,7 @@ from app.agents.prompts import (
 from app.business_context import AGENT_TASK_TH, CSC_GOAL_TH
 from app.llm_client import LLMUnavailable, call_llm
 from app.memory import memory_note as _memory_note
-from app.models import AgentFeedback, OfficeRun, PendingApproval
+from app.models import AgentFeedback, Conversation, OfficeRun, PendingApproval
 
 logger = logging.getLogger("beauty_agent_system.supervisor")
 
@@ -63,15 +64,41 @@ AGENT_MODULES = {
     "customer_success_agent": customer_success_agent,
     "product_analyst_agent": product_analyst_agent,
     "content_strategist": content_strategist_agent,
+    "general_assistant": general_assistant,
 }
 
 
-async def select_relevant_agents(db: Session, raw_text: str) -> list[str]:
+async def _run_agent(name: str, db: Session, raw_text: str, *, feedback: str | None = None,
+                      image_urls: list[str] | None = None) -> dict:
+    """Thin dispatch wrapper: only general_assistant's `run()` accepts
+    image_urls, so this keeps the other 7 agents' signatures untouched."""
+    module = AGENT_MODULES[name]
+    kwargs: dict = {}
+    if feedback:
+        kwargs["feedback"] = feedback
+    if image_urls and getattr(module, "SUPPORTS_IMAGES", False):
+        kwargs["image_urls"] = image_urls
+    return await module.run(db, raw_text, **kwargs)
+
+
+async def select_relevant_agents(db: Session, raw_text: str, *, has_images: bool = False) -> list[str]:
     """Returns the list of agent keys (from AGENT_MODULES) relevant to
-    raw_text. Keyword heuristics first; LLM fallback only if none matched."""
-    matched = [name for name, module in AGENT_MODULES.items() if module.matches(raw_text)]
+    raw_text. Keyword heuristics first; LLM fallback only if none matched.
+    general_assistant is never keyword-matched -- it's added explicitly
+    below as the catch-all for anything outside CSC's 7 specialized agents,
+    and always runs when an image is attached (it's the only one that can
+    see it)."""
+    matched = [
+        name for name, module in AGENT_MODULES.items()
+        if name != "general_assistant" and module.matches(raw_text)
+    ]
     if matched:
+        if has_images:
+            matched.append("general_assistant")
         return matched
+
+    if has_images:
+        return ["general_assistant"]
 
     try:
         raw = await call_llm(
@@ -86,8 +113,13 @@ async def select_relevant_agents(db: Session, raw_text: str) -> list[str]:
         return []
 
     if not isinstance(selected, list):
-        return []
-    return [name for name in selected if name in AGENT_MODULES]
+        selected = []
+    selected = [name for name in selected if name in AGENT_MODULES and name != "general_assistant"]
+    if not selected:
+        selected = ["general_assistant"]
+    elif has_images:
+        selected.append("general_assistant")
+    return selected
 
 
 def _dedupe_findings(findings: list[str], *, threshold: float = 0.72) -> list[str]:
@@ -236,7 +268,7 @@ def _collect_questions_and_notes(results: list[dict]) -> tuple[list[dict], list[
     return questions, notes
 
 
-async def run_office(db: Session, raw_text: str) -> dict:
+async def run_office(db: Session, raw_text: str, *, image_urls: list[str] | None = None) -> dict:
     """Main entry point: plan -> dispatch -> review -> (rework once) ->
     synthesize.
 
@@ -245,7 +277,7 @@ async def run_office(db: Session, raw_text: str) -> dict:
     (optional), approval_id (optional).
     """
     raw_text = (raw_text or "").strip()
-    if not raw_text:
+    if not raw_text and not image_urls:
         return {
             "agents_run": [],
             "plan_trace": None,
@@ -260,24 +292,7 @@ async def run_office(db: Session, raw_text: str) -> dict:
             "approval_id": None,
         }
 
-    selected = await select_relevant_agents(db, raw_text)
-    if not selected:
-        return {
-            "agents_run": [],
-            "plan_trace": None,
-            "review_trace": None,
-            "questions": [],
-            "team_notes": [],
-            "key_findings": [],
-            "founder_actions": [],
-            "ai_actions": [],
-            "missing_info": [
-                "ข้อมูลนี้ไม่เข้าเงื่อนไขของ Agent ตัวใดใน Virtual Office (Lead/Sales/Demo/"
-                "Onboarding/Customer Success/Product) -- ลองระบุให้ชัดเจนขึ้นว่าเป็นเรื่องอะไร"
-            ],
-            "draft": None,
-            "approval_id": None,
-        }
+    selected = await select_relevant_agents(db, raw_text, has_images=bool(image_urls))
 
     # --- Stage 1: plan -- state the shared goal + each agent's assignment,
     # shown to the founder so the division of labor is visible up front. ---
@@ -290,14 +305,21 @@ async def run_office(db: Session, raw_text: str) -> dict:
     }
 
     # --- Stage 2: dispatch -- run every selected agent concurrently. ---
-    results = await asyncio.gather(*(AGENT_MODULES[name].run(db, raw_text) for name in selected))
+    results = await asyncio.gather(
+        *(_run_agent(name, db, raw_text, image_urls=image_urls) for name in selected)
+    )
     results_by_agent = {r["agent_name"]: r for r in results}
     key_findings, content_ideas, founder_actions, ai_actions, missing_info = _merge_results(results)
 
     # --- Stage 3: review -- one QA pass; rework exactly the agents flagged,
-    # exactly once, then re-merge. ---
-    review = await _review_draft(
-        db, raw_text, selected, key_findings, founder_actions, ai_actions, missing_info
+    # exactly once, then re-merge. Skipped for a pure general_assistant reply --
+    # a freeform chat answer has nothing to QA against the CSC action-plan shape.
+    review = (
+        {"sufficient": True, "rework": [], "note": None}
+        if selected == ["general_assistant"]
+        else await _review_draft(
+            db, raw_text, selected, key_findings, founder_actions, ai_actions, missing_info
+        )
     )
     review_trace = {"note": review.get("note"), "rework": []}
 
@@ -305,7 +327,7 @@ async def run_office(db: Session, raw_text: str) -> dict:
         rework_map = {item["agent"]: item["feedback"] for item in review["rework"]}
         reworked = await asyncio.gather(
             *(
-                AGENT_MODULES[name].run(db, raw_text, feedback=feedback)
+                _run_agent(name, db, raw_text, feedback=feedback)
                 for name, feedback in rework_map.items()
             )
         )
@@ -360,6 +382,9 @@ async def run_office(db: Session, raw_text: str) -> dict:
     pitch_timing = cs_result.get("pitch_timing") or "" if cs_result else ""
     product_pitch = cs_result.get("product_pitch") or "" if cs_result else ""
 
+    ga_result = results_by_agent.get("general_assistant")
+    general_answer = ga_result.get("answer_text") if ga_result else None
+
     return {
         "agents_run": [AGENT_MODULES[name].LABEL_TH for name in selected],
         "plan_trace": plan_trace,
@@ -377,6 +402,7 @@ async def run_office(db: Session, raw_text: str) -> dict:
         "missing_info": missing_info,
         "draft": draft,
         "approval_id": approval_id,
+        "general_answer": general_answer,
     }
 
 
@@ -394,23 +420,27 @@ AGENT_EMOJI = {
     "customer_success_agent": "customer_success_agent",
     "product_analyst_agent": "product_analyst_agent",
     "content_strategist": "content_strategist",
+    "general_assistant": "general_assistant",
 }
 
 
-async def stream_run_office(db: Session, raw_text: str):
+async def stream_run_office(db: Session, raw_text: str, *, conversation_id: int | None = None,
+                             image_urls: list[str] | None = None):
     """Async generator that yields event dicts representing each stage of the
     Virtual Office pipeline.  The caller (SSE router) serialises them as
     `data: <json>\n\n` and pipes to the browser.  The OfficeRun DB record is
     created here at the very end so run_id can be included in "final"."""
 
     raw_text = (raw_text or "").strip()
+    image_urls = image_urls or []
 
     # ── Stage 0: supervisor selects agents ──────────────────────────────
     yield {"type": "supervisor_thinking", "text": "กำลังอ่านและเลือก Agent ที่เหมาะสม..."}
 
-    if not raw_text:
+    if not raw_text and not image_urls:
         run = OfficeRun(
-            raw_text="", agents_run=[], plan_trace=None, review_trace=None,
+            raw_text="", conversation_id=conversation_id, image_urls=[],
+            agents_run=[], plan_trace=None, review_trace=None,
             questions=[], team_notes=[], key_findings=[],
             founder_actions=[], ai_actions=[],
             missing_info=["ยังไม่ได้แปะข้อมูลอะไรเข้ามา"], approval_id=None,
@@ -422,7 +452,7 @@ async def stream_run_office(db: Session, raw_text: str):
                "questions": [], "team_notes": [], "draft": None, "agents_run": []}
         return
 
-    selected = await select_relevant_agents(db, raw_text)
+    selected = await select_relevant_agents(db, raw_text, has_images=bool(image_urls))
 
     plan_trace = {
         "goal": CSC_GOAL_TH,
@@ -438,22 +468,6 @@ async def stream_run_office(db: Session, raw_text: str):
     }
     yield {"type": "planning", "plan_trace": plan_trace, "selected": selected}
 
-    if not selected:
-        run = OfficeRun(
-            raw_text=raw_text, agents_run=[], plan_trace=plan_trace,
-            review_trace=None, questions=[], team_notes=[], key_findings=[],
-            founder_actions=[], ai_actions=[],
-            missing_info=["ข้อมูลนี้ไม่เข้าเงื่อนไขของ Agent ตัวใดใน Virtual Office"],
-            approval_id=None,
-        )
-        db.add(run); db.commit()
-        yield {"type": "final", "run_id": run.id, "key_findings": [],
-               "founder_actions": [], "ai_actions": [],
-               "missing_info": ["ข้อมูลนี้ไม่เข้าเงื่อนไขของ Agent ตัวใดใน Virtual Office -- ลองระบุให้ชัดขึ้น"],
-               "questions": [], "team_notes": [], "draft": None,
-               "agents_run": []}
-        return
-
     # ── Stage 1: dispatch all agents concurrently ────────────────────────
     # Signal every agent is starting (they all kick off simultaneously)
     for name in selected:
@@ -463,7 +477,7 @@ async def stream_run_office(db: Session, raw_text: str):
 
     # Create asyncio Tasks so we can await them with asyncio.wait
     name_to_task = {
-        name: asyncio.create_task(AGENT_MODULES[name].run(db, raw_text))
+        name: asyncio.create_task(_run_agent(name, db, raw_text, image_urls=image_urls))
         for name in selected
     }
     task_to_name = {v: k for k, v in name_to_task.items()}
@@ -491,14 +505,21 @@ async def stream_run_office(db: Session, raw_text: str):
                 "question": result.get("clarifying_question"),
                 "observations": result.get("observations") or [],
                 "draft_message": result.get("draft_message"),
+                "answer_text": result.get("answer_text"),
             }
 
     # ── Stage 2: QA review + rework (silent — no UI events) ─────────────
+    # Skipped for a pure general_assistant reply -- a freeform chat answer
+    # has nothing to QA against the CSC action-plan shape.
     key_findings, content_ideas, founder_actions, ai_actions, missing_info = _merge_results(
         [results_by_agent[n] for n in selected if n in results_by_agent]
     )
-    review = await _review_draft(db, raw_text, selected,
+    review = (
+        {"sufficient": True, "rework": [], "note": None}
+        if selected == ["general_assistant"]
+        else await _review_draft(db, raw_text, selected,
                                  key_findings, founder_actions, ai_actions, missing_info)
+    )
 
     review_trace = {"note": review.get("note"), "rework": []}
     if review.get("rework"):
@@ -508,7 +529,7 @@ async def stream_run_office(db: Session, raw_text: str):
             if item.get("agent") in AGENT_MODULES
         }
         rework_name_to_task = {
-            name: asyncio.create_task(AGENT_MODULES[name].run(db, raw_text, feedback=fb))
+            name: asyncio.create_task(_run_agent(name, db, raw_text, feedback=fb, image_urls=image_urls))
             for name, fb in rework_map.items()
         }
         rework_task_to_name = {v: k for k, v in rework_name_to_task.items()}
@@ -585,9 +606,14 @@ async def stream_run_office(db: Session, raw_text: str):
     pitch_timing = cs_result.get("pitch_timing") or "" if cs_result else ""
     product_pitch = cs_result.get("product_pitch") or "" if cs_result else ""
 
+    ga_result = results_by_agent.get("general_assistant")
+    general_answer = ga_result.get("answer_text") if ga_result else None
+
     # Save OfficeRun to DB so the static fallback (/GET) still works
     run = OfficeRun(
         raw_text=raw_text,
+        conversation_id=conversation_id,
+        image_urls=image_urls,
         agents_run=[AGENT_MODULES[n].LABEL_TH for n in selected],
         plan_trace={
             "goal": CSC_GOAL_TH,
@@ -604,9 +630,16 @@ async def stream_run_office(db: Session, raw_text: str):
         ai_actions=ai_actions,
         missing_info=missing_info,
         approval_id=approval_id,
+        general_answer=general_answer,
     )
     db.add(run)
     db.commit()
+
+    if conversation_id:
+        convo = db.get(Conversation, conversation_id)
+        if convo and convo.title == "แชทใหม่":
+            convo.title = (raw_text or "รูปภาพที่แนบมา")[:60]
+            db.commit()
 
     yield {
         "type": "final",
@@ -624,4 +657,5 @@ async def stream_run_office(db: Session, raw_text: str):
         "questions": questions,
         "team_notes": team_notes,
         "draft": draft,
+        "general_answer": general_answer,
     }

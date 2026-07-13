@@ -58,10 +58,10 @@ def _make_graph():
 _COMPILED_GRAPH = _make_graph()
 
 
-async def run_office_graph(db: Session, raw_text: str) -> dict:
+async def run_office_graph(db: Session, raw_text: str, *, image_urls: list[str] | None = None) -> dict:
     """Runs the Virtual Office graph for one founder submission. Delegates
     the actual routing/execution/synthesis to app.agents.supervisor.run_office
     -- see that module's docstring for the routing + synthesis rules."""
     from app.agents.supervisor import run_office
 
-    return await run_office(db, raw_text)
+    return await run_office(db, raw_text, image_urls=image_urls)

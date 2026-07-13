@@ -109,6 +109,24 @@ class ResearchCache(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 
+class Conversation(Base):
+    """A chat thread in the sidebar -- lets the founder split unrelated
+    topics (a nail-salon growth question vs. a completely unrelated general
+    question) into separate, deletable threads instead of one endless page.
+    Title is auto-set from the first message and never edited by an agent."""
+
+    __tablename__ = "conversations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    title: Mapped[str] = mapped_column(String(200), default="แชทใหม่")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )
+
+    runs: Mapped[list["OfficeRun"]] = relationship(back_populates="conversation", cascade="all, delete-orphan")
+
+
 class OfficeRun(Base):
     """One founder submission through the Virtual Office: the raw pasted
     text, which agents the Supervisor decided were relevant, and the
@@ -118,8 +136,17 @@ class OfficeRun(Base):
     __tablename__ = "office_runs"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    conversation_id: Mapped[int | None] = mapped_column(ForeignKey("conversations.id"))
     raw_text: Mapped[str] = mapped_column(Text, nullable=False)
+    # Relative /static/uploads/... URLs of images the founder attached to this
+    # message -- shown as thumbnails in the chat bubble and, when present,
+    # passed to the vision-capable General Assistant.
+    image_urls: Mapped[list] = mapped_column(JSON, default=list)
     agents_run: Mapped[list] = mapped_column(JSON, default=list)
+    # Freeform reply from general_assistant (general/non-CSC question, or an
+    # image analysis) -- kept separate from key_findings since it's prose,
+    # not a bullet list, and needs its own rendering.
+    general_answer: Mapped[str | None] = mapped_column(Text)
     plan_trace: Mapped[dict | None] = mapped_column(JSON)
     review_trace: Mapped[dict | None] = mapped_column(JSON)
     questions: Mapped[list] = mapped_column(JSON, default=list)
@@ -135,6 +162,8 @@ class OfficeRun(Base):
     # system improves from real outcomes instead of resetting every time.
     outcome: Mapped[str | None] = mapped_column(String(50))
     founder_note: Mapped[str | None] = mapped_column(Text)
+
+    conversation: Mapped["Conversation"] = relationship(back_populates="runs")
 
 
 class SystemState(Base):

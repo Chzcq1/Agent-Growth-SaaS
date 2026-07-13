@@ -27,6 +27,18 @@ def _client(settings) -> AsyncOpenAI:
     return AsyncOpenAI(api_key=settings.github_models_token, base_url=settings.github_models_base_url)
 
 
+def _user_content(user_prompt: str, image_data_urls: list[str] | None):
+    """Plain string for text-only calls; a multimodal content list (OpenAI
+    vision format) when images are attached -- GitHub Models' gpt-4o-mini
+    accepts the same image_url content-part shape as OpenAI's API."""
+    if not image_data_urls:
+        return user_prompt
+    content: list[dict] = [{"type": "text", "text": user_prompt}]
+    for data_url in image_data_urls:
+        content.append({"type": "image_url", "image_url": {"url": data_url}})
+    return content
+
+
 async def call_llm(
     db: Session,
     agent_name: str,
@@ -34,6 +46,7 @@ async def call_llm(
     user_prompt: str,
     *,
     temperature: float = 0.4,
+    image_data_urls: list[str] | None = None,
 ) -> str:
     """Rate-limited, retried call to GitHub Models. Returns the assistant text.
 
@@ -64,7 +77,7 @@ async def call_llm(
                 temperature=temperature,
                 messages=[
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
+                    {"role": "user", "content": _user_content(user_prompt, image_data_urls)},
                 ],
             )
             tokens_used = getattr(response.usage, "total_tokens", None) if response.usage else None

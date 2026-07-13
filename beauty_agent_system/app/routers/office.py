@@ -10,9 +10,11 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
@@ -21,12 +23,16 @@ from sqlalchemy.orm import Session
 from app.agents.graph import run_office_graph
 from app.agents.supervisor import stream_run_office
 from app.database import get_db
-from app.models import AgentFeedback, OfficeRun, PendingApproval
+from app.models import AgentFeedback, Conversation, OfficeRun, PendingApproval
 
 logger = logging.getLogger("beauty_agent_system.office")
 
 router = APIRouter(tags=["office"])
 templates = Jinja2Templates(directory="app/templates")
+
+UPLOAD_DIR = os.path.join("app", "static", "uploads")
+ALLOWED_IMAGE_TYPES = {"image/png", "image/jpeg", "image/webp", "image/gif"}
+MAX_IMAGE_BYTES = 8 * 1024 * 1024  # 8MB per image -- generous for a phone photo, small enough to keep LLM calls fast
 
 
 def _pending_approvals(db: Session) -> list[PendingApproval]:
@@ -40,18 +46,42 @@ def _pending_approvals(db: Session) -> list[PendingApproval]:
 HISTORY_LIMIT = 12
 
 
-def _recent_runs(db: Session, limit: int = HISTORY_LIMIT) -> list[OfficeRun]:
-    """Oldest-first slice of the most recent runs, so the thread renders
-    top-to-bottom like a growing conversation instead of newest-on-top."""
-    rows = db.scalars(
-        select(OfficeRun).order_by(OfficeRun.created_at.desc()).limit(limit)
-    ).all()
+def _recent_runs(db: Session, conversation_id: int | None, limit: int = HISTORY_LIMIT) -> list[OfficeRun]:
+    """Oldest-first slice of the most recent runs in one conversation, so the
+    thread renders top-to-bottom like a growing chat instead of newest-on-top."""
+    query = select(OfficeRun).order_by(OfficeRun.created_at.desc()).limit(limit)
+    query = query.where(OfficeRun.conversation_id == conversation_id)
+    rows = db.scalars(query).all()
     return list(reversed(rows))
 
 
+def _get_or_create_default_conversation(db: Session) -> Conversation:
+    """First-ever visit / no conversations yet -- give the founder one chat
+    to land in instead of an empty sidebar with nowhere to type."""
+    convo = db.scalars(select(Conversation).order_by(Conversation.updated_at.desc())).first()
+    if convo:
+        return convo
+    convo = Conversation(title="แชทใหม่")
+    db.add(convo)
+    db.commit()
+    db.refresh(convo)
+    return convo
+
+
+def _conversation_list(db: Session) -> list[dict]:
+    convos = db.scalars(select(Conversation).order_by(Conversation.updated_at.desc())).all()
+    return [
+        {"id": c.id, "title": c.title, "updated_at": c.updated_at.isoformat() if c.updated_at else None}
+        for c in convos
+    ]
+
+
 @router.get("/", response_class=HTMLResponse)
-def office_home(request: Request, db: Session = Depends(get_db)):
-    recent_runs = _recent_runs(db)
+def office_home(request: Request, conversation_id: int | None = None, db: Session = Depends(get_db)):
+    convo = db.get(Conversation, conversation_id) if conversation_id else None
+    if not convo:
+        convo = _get_or_create_default_conversation(db)
+    recent_runs = _recent_runs(db, convo.id)
     return templates.TemplateResponse(
         request,
         "office.html",
@@ -59,20 +89,48 @@ def office_home(request: Request, db: Session = Depends(get_db)):
             "latest_run": recent_runs[-1] if recent_runs else None,
             "recent_runs": recent_runs,
             "pending_approvals": _pending_approvals(db),
+            "conversation_id": convo.id,
+            "conversations": _conversation_list(db),
         },
     )
 
 
+@router.get("/conversations")
+def list_conversations(db: Session = Depends(get_db)):
+    return _conversation_list(db)
+
+
+@router.post("/conversations")
+def create_conversation(db: Session = Depends(get_db)):
+    convo = Conversation(title="แชทใหม่")
+    db.add(convo)
+    db.commit()
+    db.refresh(convo)
+    return {"id": convo.id, "title": convo.title}
+
+
+@router.delete("/conversations/{conversation_id}")
+def delete_conversation(conversation_id: int, db: Session = Depends(get_db)):
+    convo = db.get(Conversation, conversation_id)
+    if not convo:
+        raise HTTPException(status_code=404, detail="not found")
+    db.delete(convo)  # cascades to its office_runs
+    db.commit()
+    return {"ok": True}
+
+
 @router.get("/runs/recent")
-def runs_recent(db: Session = Depends(get_db)):
+def runs_recent(conversation_id: int | None = None, db: Session = Depends(get_db)):
     """JSON feed of recent runs for the client to hydrate the chat-style
     history thread on load / after a refresh, using the same renderer the
     live SSE stream uses -- so refreshing the page never loses the thread."""
-    runs = _recent_runs(db)
+    runs = _recent_runs(db, conversation_id)
     return [
         {
             "run_id": r.id,
             "raw_text": r.raw_text,
+            "image_urls": r.image_urls or [],
+            "general_answer": r.general_answer,
             "created_at": r.created_at.isoformat() if r.created_at else None,
             "agents_run": r.agents_run or [],
             "key_findings": r.key_findings or [],
@@ -109,18 +167,48 @@ def submit_run_feedback(
     return {"ok": True}
 
 
+@router.post("/images/upload")
+async def upload_image(file: UploadFile, db: Session = Depends(get_db)):  # noqa: ARG001 -- db kept for consistent DI, not used
+    """Saves one attached image to disk and returns its /static/uploads/...
+    URL. Called before /run/stream so the SSE request body can stay a plain
+    form (multipart + SSE together is awkward with the browser fetch API)."""
+    if file.content_type not in ALLOWED_IMAGE_TYPES:
+        raise HTTPException(status_code=400, detail="รองรับเฉพาะไฟล์รูปภาพ (PNG/JPEG/WEBP/GIF)")
+    data = await file.read()
+    if len(data) > MAX_IMAGE_BYTES:
+        raise HTTPException(status_code=400, detail="ไฟล์ใหญ่เกินไป (สูงสุด 8MB ต่อรูป)")
+
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    ext = os.path.splitext(file.filename or "")[1].lower() or ".png"
+    if ext not in (".png", ".jpg", ".jpeg", ".webp", ".gif"):
+        ext = ".png"
+    filename = f"{uuid.uuid4().hex}{ext}"
+    with open(os.path.join(UPLOAD_DIR, filename), "wb") as f:
+        f.write(data)
+
+    return {"url": f"/static/uploads/{filename}"}
+
+
 @router.post("/run/stream")
 async def run_office_stream(
     request: Request,
-    raw_text: str = Form(...),
+    raw_text: str = Form(""),
+    conversation_id: int = Form(...),
+    image_urls: str = Form("[]"),
     db: Session = Depends(get_db),
 ):
     """Server-Sent Events endpoint: streams each pipeline stage as JSON events
     so the browser can render agent progress in real time without page freezes."""
+    try:
+        parsed_image_urls = json.loads(image_urls) or []
+    except (TypeError, ValueError):
+        parsed_image_urls = []
 
     async def event_generator():
         try:
-            async for event in stream_run_office(db, raw_text):
+            async for event in stream_run_office(
+                db, raw_text, conversation_id=conversation_id, image_urls=parsed_image_urls
+            ):
                 yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
         except Exception as exc:
             logger.exception("SSE stream error")
@@ -140,11 +228,17 @@ async def run_office_stream(
 
 
 @router.post("/run", response_class=HTMLResponse)
-async def run_office(request: Request, raw_text: str = Form(...), db: Session = Depends(get_db)):
+async def run_office(
+    request: Request,
+    raw_text: str = Form(...),
+    conversation_id: int | None = Form(None),
+    db: Session = Depends(get_db),
+):
     result = await run_office_graph(db, raw_text)
 
     run = OfficeRun(
         raw_text=raw_text,
+        conversation_id=conversation_id,
         agents_run=result["agents_run"],
         plan_trace=result.get("plan_trace"),
         review_trace=result.get("review_trace"),
@@ -187,7 +281,7 @@ async def continue_office_run(
     combined_text = (
         f"{previous.raw_text}\n\n[คำตอบเพิ่มเติมจาก Founder ต่อคำถามของทีม AI]\n{answer.strip()}"
     )
-    return await run_office(request, raw_text=combined_text, db=db)
+    return await run_office(request, raw_text=combined_text, conversation_id=previous.conversation_id, db=db)
 
 
 @router.post("/approvals/{approval_id}/approve")

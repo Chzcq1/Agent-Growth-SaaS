@@ -38,6 +38,7 @@ const AGENT_ICONS = {
 };
 
 let currentRunId = null; // run_id of the in-flight SSE run, once known
+let pendingImages = []; // [{ url, file }] attached to the message about to be sent
 
 document.addEventListener("DOMContentLoaded", () => {
   const form = document.getElementById("office-form");
@@ -45,6 +46,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
   restoreDraft();
   hydrateHistory();
+  initSidebar();
+  initAttachments();
 
   form.addEventListener("submit", handleSubmit);
 
@@ -63,6 +66,105 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 });
 
+// ─── Sidebar: collapse toggle + new chat + delete ─────────────────────────────
+const SIDEBAR_COLLAPSED_KEY = "vo_sidebar_collapsed";
+
+function initSidebar() {
+  const sidebar = document.getElementById("sidebar");
+  if (!sidebar) return; // pages without the sidebar context (none currently)
+
+  if (localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1") {
+    sidebar.classList.add("sidebar--collapsed");
+  }
+  const toggle = (e) => {
+    e?.preventDefault();
+    const collapsed = sidebar.classList.toggle("sidebar--collapsed");
+    localStorage.setItem(SIDEBAR_COLLAPSED_KEY, collapsed ? "1" : "0");
+  };
+  document.getElementById("sidebar-toggle")?.addEventListener("click", toggle);
+  document.getElementById("sidebar-toggle-mobile")?.addEventListener("click", toggle);
+
+  document.getElementById("new-chat-btn")?.addEventListener("click", async () => {
+    try {
+      const resp = await fetch("/conversations", { method: "POST" });
+      const data = await resp.json();
+      if (data.id) window.location.href = `/?conversation_id=${data.id}`;
+    } catch (_) { /* ignore -- founder can just retry the click */ }
+  });
+
+  document.querySelectorAll(".conversation-item__delete").forEach((btn) => {
+    btn.addEventListener("click", async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const id = btn.dataset.id;
+      if (!confirm("ลบแชทนี้เลยไหม? ข้อมูลในแชทนี้จะหายไปหมด")) return;
+      try {
+        await fetch(`/conversations/${id}`, { method: "DELETE" });
+        const activeId = document.getElementById("conversation-list")?.dataset.active;
+        if (String(activeId) === String(id)) {
+          window.location.href = "/";
+        } else {
+          btn.closest(".conversation-item")?.remove();
+        }
+      } catch (_) { /* ignore */ }
+    });
+  });
+}
+
+// ─── Image attachments ─────────────────────────────────────────────────────────
+function initAttachments() {
+  const attachBtn = document.getElementById("attach-btn");
+  const imageInput = document.getElementById("image-input");
+  if (!attachBtn || !imageInput) return;
+
+  attachBtn.addEventListener("click", () => imageInput.click());
+  imageInput.addEventListener("change", async () => {
+    const files = Array.from(imageInput.files || []);
+    imageInput.value = ""; // allow re-selecting the same file later
+    for (const file of files) {
+      await uploadAndPreviewImage(file);
+    }
+  });
+}
+
+async function uploadAndPreviewImage(file) {
+  const previews = document.getElementById("attachment-previews");
+  const chip = el_("div", "attachment-chip attachment-chip--uploading");
+  const localUrl = URL.createObjectURL(file);
+  chip.innerHTML = `<img src="${localUrl}" alt="" /><span class="attachment-chip__spinner"></span>`;
+  previews.hidden = false;
+  previews.appendChild(chip);
+
+  try {
+    const fd = new FormData();
+    fd.append("file", file);
+    const resp = await fetch("/images/upload", { method: "POST", body: fd });
+    if (!resp.ok) throw new Error((await resp.json().catch(() => ({}))).detail || "อัปโหลดไม่สำเร็จ");
+    const data = await resp.json();
+    pendingImages.push({ url: data.url });
+    chip.classList.remove("attachment-chip--uploading");
+    const removeBtn = el_("button", "attachment-chip__remove");
+    removeBtn.type = "button";
+    removeBtn.innerHTML = "&times;";
+    removeBtn.addEventListener("click", () => {
+      pendingImages = pendingImages.filter(p => p.url !== data.url);
+      chip.remove();
+      if (!pendingImages.length) previews.hidden = true;
+    });
+    chip.appendChild(removeBtn);
+  } catch (err) {
+    chip.remove();
+    if (!previews.children.length) previews.hidden = true;
+    appendToThread(errorBanner(err.message || "อัปโหลดรูปไม่สำเร็จ"));
+  }
+}
+
+function clearAttachments() {
+  pendingImages = [];
+  const previews = document.getElementById("attachment-previews");
+  if (previews) { previews.innerHTML = ""; previews.hidden = true; }
+}
+
 // ─── Draft persistence (typed input must survive a refresh) ──────────────────
 function restoreDraft() {
   const textarea = document.getElementById("raw-text-input");
@@ -74,7 +176,7 @@ function restoreDraft() {
 // the thread; every run the founder has ever submitted stays visible) ─────────
 async function hydrateHistory() {
   try {
-    const resp = await fetch("/runs/recent");
+    const resp = await fetch(`/runs/recent?conversation_id=${getConversationId()}`);
     if (!resp.ok) return;
     const runs = await resp.json();
     for (const run of runs) {
@@ -82,6 +184,10 @@ async function hydrateHistory() {
     }
     scrollThreadToBottom();
   } catch (_) { /* history is a nice-to-have; ignore failures */ }
+}
+
+function getConversationId() {
+  return document.getElementById("conversation-id-input")?.value || "";
 }
 
 // ─── Chat scroll container (the only thing that scrolls -- the composer
@@ -105,18 +211,22 @@ async function handleSubmit(e) {
   const form = e.currentTarget;
   const textarea = form.querySelector("#raw-text-input");
   const rawText = textarea.value.trim();
-  if (!rawText) return;
+  const imageUrls = pendingImages.map(p => p.url);
+  if (!rawText && !imageUrls.length) return;
 
-  appendUserBubble(rawText);
+  appendUserBubble(rawText, imageUrls);
   textarea.value = "";
   autoGrowTextarea(textarea);
   localStorage.removeItem(DRAFT_KEY);
+  clearAttachments();
 
   setSubmitting(true);
   showProgress();
 
   const fd = new FormData();
   fd.append("raw_text", rawText);
+  fd.append("conversation_id", getConversationId());
+  fd.append("image_urls", JSON.stringify(imageUrls));
 
   try {
     const resp = await fetch("/run/stream", { method: "POST", body: fd });
@@ -155,7 +265,7 @@ function handleEvent(ev) {
     case "supervisor_thinking": showThinkingCloud(ev.text || "กำลังคิด..."); break;
     case "planning":   hideThinkingCloud(); updateProgressAgents(ev.plan_trace?.assignments || []); break;
     case "agent_start": markAgentTyping(ev.agent); break;
-    case "agent_done": markAgentDone(ev.agent); break;
+    case "agent_done": markAgentDone(ev.agent); renderInterimAgentCard(ev); break;
     case "final":      onFinal(ev); break;
     case "error":      appendToThread(errorBanner(ev.message)); break;
   }
@@ -242,25 +352,72 @@ function flyHandoffPaper(sourceEl) {
 }
 
 // ─── Chat thread (history) ─────────────────────────────────────────────────────
-function appendUserBubble(text) {
+function appendUserBubble(text, imageUrls = []) {
   const bubble = el_("div", "chat-bubble chat-bubble--user");
   bubble.innerHTML = `<span class="chat-bubble__icon">${IC.user}</span><span class="chat-bubble__text"></span>`;
   bubble.querySelector(".chat-bubble__text").textContent = text;
+  if (imageUrls.length) {
+    const imgs = el_("div", "chat-bubble__images");
+    for (const url of imageUrls) {
+      const img = document.createElement("img");
+      img.src = url;
+      img.alt = "รูปที่แนบมา";
+      imgs.appendChild(img);
+    }
+    bubble.appendChild(imgs);
+  }
   appendToThread(bubble);
 }
 
 function onFinal(ev) {
   currentRunId = ev.run_id;
+  clearInterimAgentCards();
   appendRunToThread(ev, { live: true });
 }
 
 function appendRunToThread(run, { live }) {
   // If this is the live in-flight run, the user bubble is already appended
   // by handleSubmit(); for history hydration, show both bubble + card.
-  if (!live && run.raw_text) appendUserBubble(run.raw_text);
+  if (!live && run.raw_text) appendUserBubble(run.raw_text, run.image_urls || []);
   const { card, sections } = buildResultCard(run, { live });
   appendToThread(card);
   revealSectionsSequentially(card, sections, { live });
+}
+
+// ─── Progressive per-agent reveal: as soon as one agent finishes, show its
+// own findings/answer right away instead of making the founder wait for the
+// single merged "final" card at the end -- these interim cards are removed
+// once the final synthesized card lands. ────────────────────────────────────
+function clearInterimAgentCards() {
+  document.querySelectorAll(".interim-agent-card").forEach(el => el.remove());
+}
+
+function renderInterimAgentCard(ev) {
+  const hasContent = (ev.findings && ev.findings.length) || ev.answer_text || ev.draft_message;
+  if (!hasContent) return;
+
+  const card = el_("div", "result-card interim-agent-card");
+  const icon = AGENT_ICONS[ev.agent] || IC.cpu;
+  card.innerHTML = `
+    <div class="result-card__header">
+      <span class="result-card__title">${icon} ${esc(ev.label)}</span>
+    </div>`;
+
+  if (ev.answer_text) {
+    const sec = section(IC.msg, "คำตอบ");
+    const p = el_("p", "interim-answer-text");
+    p.textContent = ev.answer_text;
+    sec.appendChild(p);
+    card.appendChild(sec);
+  } else if (ev.findings && ev.findings.length) {
+    const sec = section(IC.chart, "สิ่งที่พบ");
+    sec.appendChild(condensedList(ev.findings, "result-list", 3));
+    card.appendChild(sec);
+  }
+
+  card.classList.add("result-section--incoming");
+  appendToThread(card);
+  requestAnimationFrame(() => card.classList.remove("result-section--incoming"));
 }
 
 function appendToThread(el) {
@@ -282,6 +439,7 @@ function buildResultCard(ev, { live } = {}) {
     ai_actions = [], missing_info = [], questions = [],
     content_plan = [], target_profile = "", pitch_timing = "", product_pitch = "",
     draft, agents_run = [], run_id, outcome = null, founder_note = null,
+    general_answer = null,
   } = ev;
 
   const card = el_("div", "result-card");
@@ -296,6 +454,16 @@ function buildResultCard(ev, { live } = {}) {
     <div class="result-card__header">
       <span class="result-card__title">${IC.layers} ผลวิเคราะห์<span class="result-card__tags">${tags}</span></span>
     </div>`;
+
+  // ── 0. General answer (freeform reply from the General Assistant, when
+  // the message was a general/non-CSC question or had an image attached) ────
+  if (general_answer) {
+    const sec = section(IC.msg, "คำตอบ", "result-section--general-answer");
+    const p = el_("p", "general-answer-text");
+    p.textContent = general_answer;
+    sec.appendChild(p);
+    sections.push(sec);
+  }
 
   // ── 1. Questions ──────────────────────────────────────────────────────────
   if (questions.length) {
