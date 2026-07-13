@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{% block title %}Beauty SaaS Virtual Office{% endblock %}</title>
+  <link rel="stylesheet" href="/static/css/style.css" />
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <div class="brand">Virtual Office <span>Beauty SaaS Growth &amp; Support</span></div>
+      <nav>
+        <a href="/admin/approvals" class="{{ 'active' if active_nav == 'approvals' else '' }}">Pending Approvals</a>
+        <a href="/admin/leads" class="{{ 'active' if active_nav == 'leads' else '' }}">Leads</a>
+        <a href="/admin/system-health" class="{{ 'active' if active_nav == 'system_health' else '' }}">System Health</a>
+        <a href="/admin/insights" class="{{ 'active' if active_nav == 'insights' else '' }}">Weekly Insights</a>
+        <a href="/admin/knowledge-base" class="{{ 'active' if active_nav == 'knowledge_base' else '' }}">Knowledge Base</a>
+      </nav>
+    </header>
+    <main class="content">
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Pending Approvals{% endblock %}
+{% block content %}
+<h1>Pending Approvals</h1>
+<p class="subtitle">Every sales/follow-up draft waits here until you approve, edit, or reject it.</p>
+
+{% if not approvals %}
+  <div class="empty-state">Nothing waiting for review right now.</div>
+{% endif %}
+
+<div class="card-list">
+  {% for approval in approvals %}
+  {% set lead = leads_by_id.get(approval.shop_id) %}
+  <article class="approval-card">
+    <div class="approval-card__header">
+      <div>
+        <strong>{{ lead.shop_name if lead else 'Unknown shop' }}</strong>
+        <span class="tag">{{ approval.agent_name }}</span>
+      </div>
+      <time>{{ approval.created_at.strftime('%Y-%m-%d %H:%M') }}</time>
+    </div>
+
+    <form method="post" action="/admin/approvals/{{ approval.id }}/edit" class="approval-card__body">
+      <label>Draft message</label>
+      <textarea name="edited_message" rows="4">{{ approval.draft_message }}</textarea>
+
+      <details class="reasoning">
+        <summary>Why the AI chose this</summary>
+        <p>{{ approval.reasoning }}</p>
+      </details>
+
+      <div class="approval-card__actions">
+        <button type="submit" class="btn btn--primary">Save edit &amp; send</button>
+      </div>
+    </form>
+
+    <div class="approval-card__actions approval-card__actions--secondary">
+      <form method="post" action="/admin/approvals/{{ approval.id }}/approve">
+        <button type="submit" class="btn btn--success">Approve as-is</button>
+      </form>
+      <form method="post" action="/admin/approvals/{{ approval.id }}/reject">
+        <input type="text" name="founder_note" placeholder="Reason (optional)" />
+        <button type="submit" class="btn btn--danger">Reject</button>
+      </form>
+    </div>
+  </article>
+  {% endfor %}
+</div>
+{% endblock %}

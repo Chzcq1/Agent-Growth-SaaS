@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Knowledge Base Manager{% endblock %}
+{% block content %}
+<h1>Knowledge Base Manager</h1>
+<p class="subtitle">Agent 3 only ever answers from what's written here -- nothing from memory.</p>
+
+<table class="data-table">
+  <thead><tr><th>Question</th><th>Answer</th><th>Tags</th><th></th></tr></thead>
+  <tbody>
+    {% for article in articles %}
+    <tr>
+      <td>{{ article.question }}</td>
+      <td>{{ article.answer }}</td>
+      <td>{{ article.tags }}</td>
+      <td>
+        <form method="post" action="/admin/knowledge-base/{{ article.id }}/delete">
+          <button type="submit" class="btn btn--danger btn--small">Delete</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<h2>Add an article</h2>
+<form method="post" action="/admin/knowledge-base" class="stacked-form">
+  <input type="text" name="question" placeholder="Question customers ask" required />
+  <textarea name="answer" placeholder="Exact answer to give" rows="3" required></textarea>
+  <input type="text" name="tags" placeholder="tags, comma, separated" />
+  <button type="submit" class="btn btn--primary">Add article</button>
+</form>
+
+<h2>Open support tickets</h2>
+<p class="subtitle">Questions Agent 3 couldn't answer from the knowledge base above.</p>
+{% if not tickets %}
+  <div class="empty-state">No open tickets.</div>
+{% endif %}
+<div class="card-list">
+  {% for ticket in tickets %}
+  <article class="ticket-card">
+    <p>{{ ticket.summary }}</p>
+    <time>{{ ticket.created_at.strftime('%Y-%m-%d %H:%M') }}</time>
+    <form method="post" action="/admin/knowledge-base/tickets/{{ ticket.id }}/close">
+      <button type="submit" class="btn btn--primary btn--small">Close ticket</button>
+    </form>
+  </article>
+  {% endfor %}
+</div>
+{% endblock %}

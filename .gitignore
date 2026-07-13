@@ -47,3 +47,13 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+
+# Python (beauty_agent_system)
+__pycache__/
+*.pyc
+.pythonlibs/
+.pytest_cache/
+.upm/
+beauty_agent_system/_unconfigured.db
+beauty_agent_system/.env
+beauty_agent_system/alembic/__pycache__/

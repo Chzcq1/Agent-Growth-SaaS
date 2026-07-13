@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Weekly Insights{% endblock %}
+{% block content %}
+<h1>Weekly Insights</h1>
+<p class="subtitle">Generated every Monday from the past week's approve/reject/edit feedback. Nothing here changes agent prompts automatically -- apply what you agree with by hand.</p>
+
+{% if not insights %}
+  <div class="empty-state">No insight reports yet -- check back after the first week of activity.</div>
+{% endif %}
+
+<div class="card-list">
+  {% for insight in insights %}
+  <article class="insight-card {{ 'insight-card--applied' if insight.applied else '' }}">
+    <time>Week of {{ insight.week_start.strftime('%Y-%m-%d') }}</time>
+    <p>{{ insight.summary_text }}</p>
+    <p class="recommendation"><strong>Recommendation:</strong> {{ insight.recommendation }}</p>
+    {% if not insight.applied %}
+    <form method="post" action="/admin/insights/{{ insight.id }}/apply">
+      <button type="submit" class="btn btn--primary">Mark as applied</button>
+    </form>
+    {% else %}
+      <span class="tag tag--applied">Applied</span>
+    {% endif %}
+  </article>
+  {% endfor %}
+</div>
+{% endblock %}
