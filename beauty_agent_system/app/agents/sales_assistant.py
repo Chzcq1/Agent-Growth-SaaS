@@ -59,6 +59,7 @@ async def run(db: Session, raw_text: str, feedback: str | None = None) -> dict:
         "missing_info": data.get("missing_info") or [],
         "clarifying_question": data.get("clarifying_question"),
         "observations": data.get("observations") or [],
+        "thinking": data.get("thinking"),
         "draft_message": data.get("draft_message"),
         "draft_reasoning": data.get("draft_reasoning"),
     }

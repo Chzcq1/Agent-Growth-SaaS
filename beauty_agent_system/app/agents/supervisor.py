@@ -40,7 +40,7 @@ from app.agents import (
     product_analyst_agent,
     sales_assistant,
 )
-from app.agents._json_utils import empty_review, parse_json_object
+from app.agents._json_utils import empty_result, empty_review, parse_json_object
 from app.agents.prompts import (
     SUPERVISOR_REVIEW_SYSTEM_PROMPT,
     SUPERVISOR_REVIEW_USER_TEMPLATE,
@@ -49,7 +49,7 @@ from app.agents.prompts import (
 )
 from app.business_context import AGENT_TASK_TH, CSC_GOAL_TH
 from app.llm_client import LLMUnavailable, call_llm
-from app.models import AgentFeedback, PendingApproval
+from app.models import AgentFeedback, OfficeRun, PendingApproval
 
 logger = logging.getLogger("beauty_agent_system.supervisor")
 
@@ -327,4 +327,251 @@ async def run_office(db: Session, raw_text: str) -> dict:
         "missing_info": missing_info,
         "draft": draft,
         "approval_id": approval_id,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Streaming variant -- yields SSE-ready event dicts as work progresses.
+# The router wraps each with `data: ...\n\n` and saves the OfficeRun to DB
+# once the "final" event is yielded.
+# ---------------------------------------------------------------------------
+
+AGENT_EMOJI = {
+    "lead_hunter": "🔍",
+    "sales_assistant": "💬",
+    "demo_agent": "📊",
+    "onboarding_agent": "🛠️",
+    "customer_success_agent": "❤️",
+    "product_analyst_agent": "📋",
+}
+
+
+async def stream_run_office(db: Session, raw_text: str):
+    """Async generator that yields event dicts representing each stage of the
+    Virtual Office pipeline.  The caller (SSE router) serialises them as
+    `data: <json>\n\n` and pipes to the browser.  The OfficeRun DB record is
+    created here at the very end so run_id can be included in "final"."""
+
+    raw_text = (raw_text or "").strip()
+
+    # ── Stage 0: supervisor selects agents ──────────────────────────────
+    yield {"type": "supervisor_thinking", "text": "กำลังอ่านและเลือก Agent ที่เหมาะสม..."}
+
+    if not raw_text:
+        run = OfficeRun(
+            raw_text="", agents_run=[], plan_trace=None, review_trace=None,
+            questions=[], team_notes=[], key_findings=[],
+            founder_actions=[], ai_actions=[],
+            missing_info=["ยังไม่ได้แปะข้อมูลอะไรเข้ามา"], approval_id=None,
+        )
+        db.add(run); db.commit()
+        yield {"type": "final", "run_id": run.id, "key_findings": [],
+               "founder_actions": [], "ai_actions": [],
+               "missing_info": ["ยังไม่ได้แปะข้อมูลอะไรเข้ามา"],
+               "questions": [], "team_notes": [], "draft": None, "agents_run": []}
+        return
+
+    selected = await select_relevant_agents(db, raw_text)
+
+    plan_trace = {
+        "goal": CSC_GOAL_TH,
+        "assignments": [
+            {
+                "agent": name,
+                "label": AGENT_MODULES[name].LABEL_TH,
+                "emoji": AGENT_EMOJI.get(name, "🤖"),
+                "task": AGENT_TASK_TH.get(name, ""),
+            }
+            for name in selected
+        ],
+    }
+    yield {"type": "planning", "plan_trace": plan_trace, "selected": selected}
+
+    if not selected:
+        run = OfficeRun(
+            raw_text=raw_text, agents_run=[], plan_trace=plan_trace,
+            review_trace=None, questions=[], team_notes=[], key_findings=[],
+            founder_actions=[], ai_actions=[],
+            missing_info=["ข้อมูลนี้ไม่เข้าเงื่อนไขของ Agent ตัวใดใน Virtual Office"],
+            approval_id=None,
+        )
+        db.add(run); db.commit()
+        yield {"type": "final", "run_id": run.id, "key_findings": [],
+               "founder_actions": [], "ai_actions": [],
+               "missing_info": ["ข้อมูลนี้ไม่เข้าเงื่อนไขของ Agent ตัวใดใน Virtual Office -- ลองระบุให้ชัดขึ้น"],
+               "questions": [], "team_notes": [], "draft": None,
+               "agents_run": []}
+        return
+
+    # ── Stage 1: dispatch all agents concurrently ────────────────────────
+    # Signal every agent is starting (they all kick off simultaneously)
+    for name in selected:
+        yield {"type": "agent_start", "agent": name,
+               "label": AGENT_MODULES[name].LABEL_TH,
+               "emoji": AGENT_EMOJI.get(name, "🤖")}
+
+    # Create asyncio Tasks so we can await them with asyncio.wait
+    name_to_task = {
+        name: asyncio.create_task(AGENT_MODULES[name].run(db, raw_text))
+        for name in selected
+    }
+    task_to_name = {v: k for k, v in name_to_task.items()}
+    pending = set(name_to_task.values())
+
+    results_by_agent: dict = {}
+    while pending:
+        done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
+        for task in done:
+            name = task_to_name[task]
+            try:
+                result = task.result()
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("agent %s raised: %s", name, exc)
+                result = empty_result(name, AGENT_MODULES[name].LABEL_TH,
+                                      missing_info=[f"ข้อผิดพลาด: {exc}"])
+            results_by_agent[name] = result
+            yield {
+                "type": "agent_done",
+                "agent": name,
+                "label": result["label_th"],
+                "emoji": AGENT_EMOJI.get(name, "🤖"),
+                "thinking": result.get("thinking"),
+                "findings": result.get("key_findings") or [],
+                "question": result.get("clarifying_question"),
+                "observations": result.get("observations") or [],
+                "draft_message": result.get("draft_message"),
+            }
+
+    # ── Stage 2: QA review ───────────────────────────────────────────────
+    yield {"type": "qa_start"}
+    key_findings, founder_actions, ai_actions, missing_info = _merge_results(
+        [results_by_agent[n] for n in selected if n in results_by_agent]
+    )
+    review = await _review_draft(db, raw_text, selected,
+                                 key_findings, founder_actions, ai_actions, missing_info)
+    yield {
+        "type": "qa_done",
+        "note": review.get("note"),
+        "sufficient": review.get("sufficient", True),
+        "rework": review.get("rework") or [],
+    }
+
+    # ── Stage 3: rework (at most once) ──────────────────────────────────
+    review_trace = {"note": review.get("note"), "rework": []}
+    if review.get("rework"):
+        rework_map = {
+            item["agent"]: item["feedback"]
+            for item in review["rework"]
+            if item.get("agent") in AGENT_MODULES
+        }
+        for name, feedback in rework_map.items():
+            yield {
+                "type": "rework_start",
+                "agent": name,
+                "label": AGENT_MODULES[name].LABEL_TH,
+                "emoji": AGENT_EMOJI.get(name, "🤖"),
+                "feedback": feedback,
+            }
+            review_trace["rework"].append(
+                {"label": AGENT_MODULES[name].LABEL_TH, "feedback": feedback}
+            )
+
+        rework_name_to_task = {
+            name: asyncio.create_task(AGENT_MODULES[name].run(db, raw_text, feedback=fb))
+            for name, fb in rework_map.items()
+        }
+        rework_task_to_name = {v: k for k, v in rework_name_to_task.items()}
+        pending_rework = set(rework_name_to_task.values())
+
+        while pending_rework:
+            done, pending_rework = await asyncio.wait(
+                pending_rework, return_when=asyncio.FIRST_COMPLETED
+            )
+            for task in done:
+                name = rework_task_to_name[task]
+                try:
+                    result = task.result()
+                except Exception as exc:  # noqa: BLE001
+                    result = results_by_agent.get(
+                        name, empty_result(name, AGENT_MODULES[name].LABEL_TH,
+                                           missing_info=[str(exc)])
+                    )
+                results_by_agent[name] = result
+                yield {
+                    "type": "rework_done",
+                    "agent": name,
+                    "label": result["label_th"],
+                    "emoji": AGENT_EMOJI.get(name, "🤖"),
+                    "findings": result.get("key_findings") or [],
+                }
+
+        key_findings, founder_actions, ai_actions, missing_info = _merge_results(
+            [results_by_agent[n] for n in selected if n in results_by_agent]
+        )
+
+    # ── Stage 4: synthesize ──────────────────────────────────────────────
+    key_findings = _dedupe_findings(key_findings)
+    draft: dict | None = None
+    approval_id: int | None = None
+
+    sales_result = results_by_agent.get("sales_assistant")
+    if sales_result and sales_result.get("draft_message"):
+        approval = PendingApproval(
+            agent_name="sales_assistant",
+            draft_message=sales_result["draft_message"],
+            reasoning=sales_result.get("draft_reasoning") or "(ไม่มีคำอธิบายเพิ่มเติม)",
+            status="pending",
+        )
+        db.add(approval)
+        db.commit()
+        draft = {
+            "message": sales_result["draft_message"],
+            "reasoning": sales_result.get("draft_reasoning"),
+            "approval_id": approval.id,
+        }
+        approval_id = approval.id
+        founder_actions.append("ตรวจ/แก้/อนุมัติข้อความร่างจาก Sales Assistant ก่อนส่งลูกค้าจริง")
+
+    tone_note = _recent_sales_tone_note(db)
+    if tone_note:
+        key_findings.append(f"[Supervisor] {tone_note}")
+
+    questions, team_notes = _collect_questions_and_notes(
+        list(results_by_agent.values())
+    )
+
+    # Save OfficeRun to DB so the static fallback (/GET) still works
+    run = OfficeRun(
+        raw_text=raw_text,
+        agents_run=[AGENT_MODULES[n].LABEL_TH for n in selected],
+        plan_trace={
+            "goal": CSC_GOAL_TH,
+            "assignments": [
+                {"label": AGENT_MODULES[n].LABEL_TH, "task": AGENT_TASK_TH.get(n, "")}
+                for n in selected
+            ],
+        },
+        review_trace=review_trace,
+        questions=questions,
+        team_notes=team_notes,
+        key_findings=key_findings,
+        founder_actions=founder_actions,
+        ai_actions=ai_actions,
+        missing_info=missing_info,
+        approval_id=approval_id,
+    )
+    db.add(run)
+    db.commit()
+
+    yield {
+        "type": "final",
+        "run_id": run.id,
+        "agents_run": [AGENT_MODULES[n].LABEL_TH for n in selected],
+        "key_findings": key_findings,
+        "founder_actions": founder_actions,
+        "ai_actions": ai_actions,
+        "missing_info": missing_info,
+        "questions": questions,
+        "team_notes": team_notes,
+        "draft": draft,
     }

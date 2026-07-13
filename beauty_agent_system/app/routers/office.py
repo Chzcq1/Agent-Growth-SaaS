@@ -8,17 +8,22 @@ Insights/Knowledge Base) entirely -- see README for the rationale.
 """
 from __future__ import annotations
 
+import json
+import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.agents.graph import run_office_graph
+from app.agents.supervisor import stream_run_office
 from app.database import get_db
 from app.models import AgentFeedback, OfficeRun, PendingApproval
+
+logger = logging.getLogger("beauty_agent_system.office")
 
 router = APIRouter(tags=["office"])
 templates = Jinja2Templates(directory="app/templates")
@@ -41,6 +46,36 @@ def office_home(request: Request, db: Session = Depends(get_db)):
         {
             "latest_run": latest_run,
             "pending_approvals": _pending_approvals(db),
+        },
+    )
+
+
+@router.post("/run/stream")
+async def run_office_stream(
+    request: Request,
+    raw_text: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    """Server-Sent Events endpoint: streams each pipeline stage as JSON events
+    so the browser can render agent progress in real time without page freezes."""
+
+    async def event_generator():
+        try:
+            async for event in stream_run_office(db, raw_text):
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+        except Exception as exc:
+            logger.exception("SSE stream error")
+            yield f"data: {json.dumps({'type': 'error', 'message': str(exc)}, ensure_ascii=False)}\n\n"
+        finally:
+            yield 'data: {"type":"stream_end"}\n\n'
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
         },
     )
 

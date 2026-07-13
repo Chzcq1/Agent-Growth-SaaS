@@ -19,6 +19,17 @@ _scheduler = None
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _scheduler
+    # When no NEON_DATABASE_URL is set the engine falls back to a local SQLite
+    # file.  Create all tables so the app doesn't 500 on the very first request.
+    from app.config import get_settings
+    from app.database import Base, get_engine
+    if not get_settings().neon_database_url:
+        import logging
+        logging.getLogger("beauty_agent_system").warning(
+            "NEON_DATABASE_URL not set — using local SQLite fallback and "
+            "auto-creating tables.  Set the secret to switch to Neon."
+        )
+        Base.metadata.create_all(bind=get_engine())
     _scheduler = start_scheduler()
     yield
     if _scheduler:

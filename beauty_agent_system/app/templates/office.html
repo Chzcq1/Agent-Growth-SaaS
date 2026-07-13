@@ -1,148 +1,142 @@
 {% extends "base.html" %}
-{% block title %}Virtual Office{% endblock %}
+{% block title %}Virtual Office — CSC{% endblock %}
 {% block content %}
-<h1>แปะข้อมูลดิบตรงนี้</h1>
-<p class="subtitle">
-  โพสต์จากกลุ่ม Facebook, คอมเมนต์ลูกค้า, บทสนทนากับลีด, คำถามเรื่องฟีเจอร์/แพ็กเกจ, ข้อความจากร้านที่ใช้อยู่, หรือ Feedback -- แปะเข้ามาได้เลยทีเดียว
-  Supervisor จะเลือก Agent ที่เกี่ยวข้องเองแล้วรวมเป็นคำตอบเดียว
-</p>
 
-<form method="post" action="/run" class="stacked-form">
-  <textarea name="raw_text" rows="8" placeholder="แปะข้อความ/โพสต์/บทสนทนาที่นี่..." required>{{ latest_run.raw_text if latest_run else '' }}</textarea>
-  <button type="submit" class="btn btn--primary">ส่งให้ Virtual Office วิเคราะห์</button>
-</form>
+<div class="vo-layout">
 
-{% if latest_run %}
-{% if latest_run.questions %}
-<article class="briefing-card briefing-card--attention" style="margin-top: 24px;">
-  <h2>ทีม AI อยากถามคุณก่อนทำต่อ</h2>
-  <ul>
-    {% for q in latest_run.questions %}
-    <li><strong>{{ q.label }}</strong> ถาม: {{ q.question }}</li>
-    {% endfor %}
-  </ul>
-  <form method="post" action="/run/continue" class="stacked-form">
-    <input type="hidden" name="previous_run_id" value="{{ latest_run.id }}" />
-    <textarea name="answer" rows="3" placeholder="ตอบคำถามด้านบนตรงนี้ แล้วทีมจะทำงานต่อทันที..." required></textarea>
-    <button type="submit" class="btn btn--primary">ส่งคำตอบ ให้ทีมทำงานต่อ</button>
-  </form>
-</article>
-{% endif %}
-{% if latest_run.team_notes %}
-<article class="briefing-card" style="margin-top: 24px;">
-  <h2>ข้อสังเกต/ไอเดียที่ทีม AI เจอระหว่างทาง</h2>
-  <ul>
-    {% for n in latest_run.team_notes %}
-    <li><strong>{{ n.label }}</strong>: {{ n.note }}</li>
-    {% endfor %}
-  </ul>
-</article>
-{% endif %}
-{% if latest_run.plan_trace %}
-<article class="briefing-card" style="margin-top: 24px;">
-  <h2>ทีม AI กำลังทำงานร่วมกัน</h2>
-  <p class="subtitle">{{ latest_run.plan_trace.goal }}</p>
-  <ul>
-    {% for item in latest_run.plan_trace.assignments %}
-    <li><strong>{{ item.label }}</strong> -- {{ item.task }}</li>
-    {% endfor %}
-  </ul>
-  {% if latest_run.review_trace %}
-  <details class="reasoning" open>
-    <summary>ผลตรวจงาน (QA) ก่อนสรุปให้ Founder</summary>
-    {% if latest_run.review_trace.note %}<p>{{ latest_run.review_trace.note }}</p>{% endif %}
-    {% if latest_run.review_trace.rework %}
-      <p>พบว่ายังไม่ครอบคลุมพอ จึงให้ทำเพิ่มอีกรอบ:</p>
-      <ul>
-        {% for item in latest_run.review_trace.rework %}
-        <li><strong>{{ item.label }}</strong>: {{ item.feedback }}</li>
-        {% endfor %}
-      </ul>
+  <!-- ── INPUT PANEL ────────────────────────────────────────────── -->
+  <section class="vo-input-panel">
+    <h1>Virtual Office</h1>
+    <p class="subtitle">แปะข้อความ โพสต์ หรือ Feedback ตรงนี้เลย — ทีม AI จะแบ่งงานกันวิเคราะห์และรายงานผลแบบ Real-time</p>
+
+    <form id="office-form" class="input-form">
+      <textarea id="raw-text-input" name="raw_text" rows="6"
+        placeholder="แปะข้อความจาก Facebook, บทสนทนากับลีด, คำถามเรื่องฟีเจอร์, Feedback จากร้าน..." required>{{ latest_run.raw_text if latest_run else '' }}</textarea>
+      <button type="submit" class="btn btn--primary btn--submit" id="submit-btn">
+        <span class="btn-text">ส่งให้ Virtual Office วิเคราะห์</span>
+        <span class="btn-spinner" hidden>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+          </svg>
+        </span>
+      </button>
+    </form>
+  </section>
+
+  <!-- ── STREAM PANEL (shown while/after streaming) ────────────── -->
+  <section id="stream-panel" class="stream-panel" hidden>
+    <div id="stream-log" class="stream-log"></div>
+  </section>
+
+  <!-- ── STATIC RESULT (shown on page load, hidden while streaming) -->
+  <section id="static-result" class="static-result {{ '' if latest_run else 'hidden' }}">
+    {% if latest_run %}
+      {% if latest_run.questions %}
+      <div class="result-card result-card--attention" style="margin-bottom:16px">
+        <div class="result-card__title">💬 ทีม AI อยากถามคุณก่อนทำต่อ</div>
+        <ul class="result-list">
+          {% for q in latest_run.questions %}
+          <li><strong>{{ q.label }}</strong> — {{ q.question }}</li>
+          {% endfor %}
+        </ul>
+        <form method="post" action="/run/continue" class="stacked-form" style="margin-top:12px">
+          <input type="hidden" name="previous_run_id" value="{{ latest_run.id }}" />
+          <textarea name="answer" rows="3" placeholder="ตอบคำถามด้านบน แล้วทีมจะทำงานต่อทันที..." required></textarea>
+          <button type="submit" class="btn btn--primary">ส่งคำตอบ ให้ทีมทำงานต่อ</button>
+        </form>
+      </div>
+      {% endif %}
+
+      {% if latest_run.team_notes %}
+      <div class="result-card" style="margin-bottom:16px">
+        <div class="result-card__title">💡 ข้อสังเกต/ไอเดียที่ทีม AI เจอระหว่างทาง</div>
+        <ul class="result-list">
+          {% for n in latest_run.team_notes %}
+          <li><strong>{{ n.label }}</strong>: {{ n.note }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+
+      <div class="result-card">
+        <div class="result-card__header">
+          <div class="result-card__title">📋 ผลวิเคราะห์ล่าสุด
+            {% for label in latest_run.agents_run %}<span class="tag">{{ label }}</span>{% endfor %}
+            {% if not latest_run.agents_run %}<span class="tag">ไม่มี Agent ที่เกี่ยวข้อง</span>{% endif %}
+          </div>
+          <time class="result-card__time">{{ latest_run.created_at.strftime('%d/%m/%y %H:%M') }}</time>
+        </div>
+
+        <h3 class="section-label">สิ่งที่พบ (Key Findings)</h3>
+        {% if latest_run.key_findings %}
+          <ul class="result-list">{% for f in latest_run.key_findings %}<li>{{ f }}</li>{% endfor %}</ul>
+        {% else %}
+          <div class="empty-state">ยังไม่พบประเด็นที่ชัดเจนจากข้อมูลนี้</div>
+        {% endif %}
+
+        <h3 class="section-label">แผนงาน (Action Plan)</h3>
+        <div class="action-grid">
+          <div class="action-col action-col--founder">
+            <div class="action-col__label">👤 Founder ต้องทำเอง</div>
+            {% if latest_run.founder_actions %}
+              <ul class="result-list">{% for a in latest_run.founder_actions %}<li>{{ a }}</li>{% endfor %}</ul>
+            {% else %}<span class="muted-text">ไม่มี</span>{% endif %}
+          </div>
+          <div class="action-col action-col--ai">
+            <div class="action-col__label">🤖 AI จะทำต่อเอง</div>
+            {% if latest_run.ai_actions %}
+              <ul class="result-list">{% for a in latest_run.ai_actions %}<li>{{ a }}</li>{% endfor %}</ul>
+            {% else %}<span class="muted-text">ไม่มี</span>{% endif %}
+          </div>
+        </div>
+
+        {% if latest_run.missing_info %}
+        <h3 class="section-label">ข้อมูลที่ยังขาด</h3>
+        <ul class="result-list result-list--warn">{% for item in latest_run.missing_info %}<li>{{ item }}</li>{% endfor %}</ul>
+        {% endif %}
+      </div>
+    {% endif %}
+  </section>
+
+  <!-- ── PENDING APPROVALS ──────────────────────────────────────── -->
+  <section class="approvals-section">
+    <h2 class="section-heading">ข้อความร่างที่รอตรวจ</h2>
+    {% if not pending_approvals %}
+      <div class="empty-state">ไม่มีข้อความร่างที่รอตรวจตอนนี้</div>
     {% else %}
-      <p>ตรวจแล้วครอบคลุมพอในรอบแรก ไม่ต้องทำซ้ำ</p>
+    <div class="card-list">
+      {% for approval in pending_approvals %}
+      <article class="approval-card">
+        <div class="approval-card__header">
+          <strong>ร่างข้อความทัก Messenger</strong>
+          <time>{{ approval.created_at.strftime('%d/%m/%y %H:%M') }}</time>
+        </div>
+        <p>{{ approval.draft_message }}</p>
+        {% if approval.reasoning %}
+        <details class="reasoning">
+          <summary>เหตุผลที่ AI เลือกมุมนี้</summary>
+          <p>{{ approval.reasoning }}</p>
+        </details>
+        {% endif %}
+        <div class="approval-card__actions">
+          <form method="post" action="/approvals/{{ approval.id }}/approve">
+            <button type="submit" class="btn btn--success">อนุมัติ (ใช้ตามนี้)</button>
+          </form>
+          <form method="post" action="/approvals/{{ approval.id }}/reject">
+            <button type="submit" class="btn btn--danger">ไม่ใช้</button>
+          </form>
+        </div>
+        <div class="approval-card__actions approval-card__actions--secondary">
+          <form method="post" action="/approvals/{{ approval.id }}/edit">
+            <input type="text" name="edited_message" value="{{ approval.draft_message }}" required />
+            <button type="submit" class="btn btn--primary btn--small">แก้แล้วใช้อันนี้แทน</button>
+          </form>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
     {% endif %}
-  </details>
-  {% endif %}
-</article>
-{% endif %}
-<article class="briefing-card" style="margin-top: 24px;">
-  <div class="approval-card__header">
-    <div>
-      <strong>ผลวิเคราะห์ล่าสุด</strong>
-      {% for label in latest_run.agents_run %}<span class="tag">{{ label }}</span>{% endfor %}
-      {% if not latest_run.agents_run %}<span class="tag">ไม่มี Agent ที่เกี่ยวข้อง</span>{% endif %}
-    </div>
-    <time>{{ latest_run.created_at.strftime('%Y-%m-%d %H:%M') }}</time>
-  </div>
+  </section>
 
-  <h2>สิ่งที่พบ (Key Findings)</h2>
-  {% if latest_run.key_findings %}
-    <ul>{% for finding in latest_run.key_findings %}<li>{{ finding }}</li>{% endfor %}</ul>
-  {% else %}
-    <div class="empty-state">ยังไม่พบประเด็นที่ชัดเจนจากข้อมูลนี้</div>
-  {% endif %}
-
-  <h2>แผนงาน (Action Plan)</h2>
-  <div class="stat-grid">
-    <div class="stat-card">
-      <span class="stat-label">Founder ต้องทำเอง</span>
-      {% if latest_run.founder_actions %}
-        <ul>{% for action in latest_run.founder_actions %}<li>{{ action }}</li>{% endfor %}</ul>
-      {% else %}
-        <span class="stat-detail">ไม่มี</span>
-      {% endif %}
-    </div>
-    <div class="stat-card stat-card--ok">
-      <span class="stat-label">AI จะทำต่อเอง</span>
-      {% if latest_run.ai_actions %}
-        <ul>{% for action in latest_run.ai_actions %}<li>{{ action }}</li>{% endfor %}</ul>
-      {% else %}
-        <span class="stat-detail">ไม่มี</span>
-      {% endif %}
-    </div>
-  </div>
-
-  {% if latest_run.missing_info %}
-  <h2>ข้อมูลที่ยังขาด</h2>
-  <ul>{% for item in latest_run.missing_info %}<li>{{ item }}</li>{% endfor %}</ul>
-  {% endif %}
-</article>
-{% endif %}
-
-<h2>ข้อความร่างที่รอตรวจ</h2>
-{% if not pending_approvals %}
-  <div class="empty-state">ไม่มีข้อความร่างที่รอตรวจตอนนี้</div>
-{% else %}
-<div class="card-list">
-  {% for approval in pending_approvals %}
-  <article class="approval-card">
-    <div class="approval-card__header">
-      <strong>ร่างข้อความทัก Messenger</strong>
-      <time>{{ approval.created_at.strftime('%Y-%m-%d %H:%M') }}</time>
-    </div>
-    <p>{{ approval.draft_message }}</p>
-    {% if approval.reasoning %}
-    <details class="reasoning">
-      <summary>เหตุผลที่ AI เลือกมุมนี้</summary>
-      <p>{{ approval.reasoning }}</p>
-    </details>
-    {% endif %}
-    <div class="approval-card__actions">
-      <form method="post" action="/approvals/{{ approval.id }}/approve">
-        <button type="submit" class="btn btn--success">อนุมัติ (ใช้ตามนี้)</button>
-      </form>
-      <form method="post" action="/approvals/{{ approval.id }}/reject">
-        <button type="submit" class="btn btn--danger">ไม่ใช้</button>
-      </form>
-    </div>
-    <div class="approval-card__actions approval-card__actions--secondary">
-      <form method="post" action="/approvals/{{ approval.id }}/edit">
-        <input type="text" name="edited_message" value="{{ approval.draft_message }}" required />
-        <button type="submit" class="btn btn--primary btn--small">แก้แล้วใช้อันนี้แทน</button>
-      </form>
-    </div>
-  </article>
-  {% endfor %}
-</div>
-{% endif %}
+</div><!-- /.vo-layout -->
 {% endblock %}
