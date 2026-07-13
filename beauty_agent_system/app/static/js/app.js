@@ -3,21 +3,46 @@
 // ─── Virtual Office — Streaming UI ───────────────────────────────────────────
 const LS_KEY = "vo_last_result";
 
+// ── SVG icon library (Lucide-style, no emoji) ─────────────────────────────────
+const IC = {
+  chart:   `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>`,
+  bulb:    `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="9" y1="18" x2="15" y2="18"/><line x1="10" y1="22" x2="14" y2="22"/><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"/></svg>`,
+  layers:  `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>`,
+  target:  `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>`,
+  msg:     `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`,
+  check:   `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>`,
+  cpu:     `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/></svg>`,
+  alert:   `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+  help:    `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+  copy:    `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`,
+  done:    `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`,
+  user:    `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`,
+  clock:   `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`,
+  img:     `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`,
+  arrow:   `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>`,
+};
+
+// Agent icon keys → SVG (for progress dots)
+const AGENT_ICONS = {
+  lead_hunter:            `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>`,
+  sales_assistant:        IC.msg,
+  demo_agent:             IC.chart,
+  onboarding_agent:       `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>`,
+  customer_success_agent: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
+  product_analyst_agent:  `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>`,
+  content_strategist:     IC.layers,
+};
+
 document.addEventListener("DOMContentLoaded", () => {
   const form = document.getElementById("office-form");
   if (!form) return;
 
-  // Hide server-rendered static result — JS will manage state
   const staticEl = document.getElementById("static-result");
   if (staticEl) staticEl.classList.add("hidden");
 
-  // Restore last result from localStorage if no server result visible
   const saved = localStorage.getItem(LS_KEY);
   if (saved) {
     try { renderFinal(JSON.parse(saved)); } catch (_) { localStorage.removeItem(LS_KEY); }
-  } else if (staticEl && !staticEl.classList.contains("hidden")) {
-    // keep server result shown
-    staticEl.classList.remove("hidden");
   }
 
   form.addEventListener("submit", handleSubmit);
@@ -72,21 +97,16 @@ async function readSSE(resp) {
 // ─── Event dispatch ───────────────────────────────────────────────────────────
 function handleEvent(ev) {
   switch (ev.type) {
-    case "planning":    updateProgressAgents(ev.plan_trace?.assignments || []); break;
-    case "agent_done":  markAgentDone(ev.agent); break;
-    case "final":       onFinal(ev); break;
-    case "error":       appendToResult(errorBanner(ev.message)); break;
-    case "stream_end":  /* handled in handleSubmit finally */ break;
+    case "planning":   updateProgressAgents(ev.plan_trace?.assignments || []); break;
+    case "agent_done": markAgentDone(ev.agent); break;
+    case "final":      onFinal(ev); break;
+    case "error":      appendToResult(errorBanner(ev.message)); break;
   }
 }
 
 // ─── Progress area ────────────────────────────────────────────────────────────
-function showProgress() {
-  document.getElementById("progress-area").hidden = false;
-}
-function hideProgress() {
-  document.getElementById("progress-area").hidden = true;
-}
+function showProgress() { document.getElementById("progress-area").hidden = false; }
+function hideProgress() { document.getElementById("progress-area").hidden = true; }
 
 function updateProgressAgents(assignments) {
   const container = document.getElementById("progress-agents");
@@ -95,19 +115,19 @@ function updateProgressAgents(assignments) {
     const el = document.createElement("span");
     el.className = "progress-agent progress-agent--working";
     el.id = `pa-${a.agent}`;
-    el.innerHTML = `<span class="agent-dot"></span>${esc(a.emoji || "")} ${esc(a.label)}`;
+    const icon = AGENT_ICONS[a.agent] || IC.cpu;
+    el.innerHTML = `<span class="agent-dot"></span><span class="agent-icon">${icon}</span>${esc(a.label)}`;
     container.appendChild(el);
   }
 }
 
 function markAgentDone(agent) {
   const el = document.getElementById(`pa-${agent}`);
-  if (el) {
-    el.classList.remove("progress-agent--working");
-    el.classList.add("progress-agent--done");
-    el.querySelector(".agent-dot").textContent = "";
-    el.innerHTML = `<span class="agent-dot"></span>✓ ${el.textContent.trim()}`;
-  }
+  if (!el) return;
+  el.classList.remove("progress-agent--working");
+  el.classList.add("progress-agent--done");
+  el.querySelector(".agent-dot").innerHTML = IC.done;
+  el.querySelector(".agent-dot").classList.add("agent-dot--done");
 }
 
 // ─── Result rendering ─────────────────────────────────────────────────────────
@@ -120,6 +140,7 @@ function renderFinal(ev) {
   const {
     key_findings = [], content_ideas = [], founder_actions = [],
     ai_actions = [], missing_info = [], questions = [],
+    content_plan = [], target_profile = "", pitch_timing = "", product_pitch = "",
     draft, agents_run = [], run_id,
   } = ev;
 
@@ -129,22 +150,21 @@ function renderFinal(ev) {
   const tags = agents_run.map(l => `<span class="tag">${esc(l)}</span>`).join("");
   card.innerHTML = `
     <div class="result-card__header">
-      <span class="result-card__title">📋 ผลวิเคราะห์ ${tags}</span>
+      <span class="result-card__title">${IC.layers} ผลวิเคราะห์ ${tags}</span>
     </div>`;
 
-  // 1. Questions (if any) — with quick-answer chips
+  // ── 1. Questions ──────────────────────────────────────────────────────────
   if (questions.length) {
-    const sec = section("💬 ทีม AI มีคำถาม", "result-section--attention");
+    const sec = section(IC.help, "ทีม AI มีคำถาม", "result-section--attention");
     for (const q of questions) {
       const qb = el_("div", "question-block");
       qb.innerHTML = `<p><strong>${esc(q.label)}</strong>: ${esc(q.question)}</p>`;
 
-      // Quick-answer chips
       const chips = el_("div", "question-chips");
       const QUICK = [
-        "✅ ข้อมูลที่มีอยู่ก็พอแล้ว ทำต่อได้เลย",
-        "❓ ยังไม่รู้เหมือนกัน",
-        "⏭️ ข้ามคำถามนี้ไปก่อน",
+        "ข้อมูลที่มีอยู่ก็พอแล้ว ทำต่อได้เลย",
+        "ยังไม่รู้เหมือนกัน",
+        "ข้ามคำถามนี้ไปก่อน",
       ];
       let selectedAnswer = "";
       const textarea = el_("textarea", "question-custom");
@@ -194,51 +214,141 @@ function renderFinal(ev) {
     card.appendChild(sec);
   }
 
-  // 2. Key findings
+  // ── 2. Key findings ───────────────────────────────────────────────────────
   if (key_findings.length) {
-    const sec = section("📊 สิ่งที่วิเคราะห์พบ");
+    const sec = section(IC.chart, "สิ่งที่วิเคราะห์พบ");
     sec.appendChild(ul_(key_findings, "result-list"));
     card.appendChild(sec);
   }
 
-  // 3. Content ideas
+  // ── 3. Content plan (step-by-step, Notion-style) ──────────────────────────
+  if (content_plan.length || target_profile || pitch_timing || product_pitch) {
+    const sec = section(IC.layers, "แผนโพสต์ Facebook — ขั้นตอน", "result-section--plan");
+
+    // Target profile chip
+    if (target_profile) {
+      const chip = el_("div", "profile-chip");
+      chip.innerHTML = `<span class="chip-icon">${IC.target}</span><strong>กลุ่มเป้าหมาย:</strong> ${esc(target_profile)}`;
+      sec.appendChild(chip);
+    }
+
+    // Steps
+    for (const step of content_plan) {
+      const stepEl = el_("div", "plan-step");
+
+      const header = el_("div", "plan-step__header");
+      header.innerHTML = `
+        <span class="step-badge">Step ${esc(String(step.step || ""))}</span>
+        <span class="step-phase">${esc(step.phase || "")}</span>`;
+      stepEl.appendChild(header);
+
+      if (step.group) {
+        const row = el_("div", "plan-row");
+        row.innerHTML = `<span class="plan-row__label">${IC.target} กลุ่ม</span><span class="plan-row__val">${esc(step.group)}</span>`;
+        stepEl.appendChild(row);
+      }
+
+      if (step.copy) {
+        const copyWrap = el_("div", "plan-copy-wrap");
+        const copyBox = el_("div", "plan-copy-box");
+        copyBox.textContent = step.copy;
+        const copyBtn = el_("button", "mini-copy-btn");
+        copyBtn.type = "button";
+        copyBtn.innerHTML = IC.copy + " คัดลอก";
+        copyBtn.addEventListener("click", () => {
+          navigator.clipboard.writeText(step.copy).then(() => {
+            copyBtn.innerHTML = IC.done + " คัดลอกแล้ว";
+            copyBtn.classList.add("mini-copy-btn--done");
+            setTimeout(() => {
+              copyBtn.innerHTML = IC.copy + " คัดลอก";
+              copyBtn.classList.remove("mini-copy-btn--done");
+            }, 2000);
+          });
+        });
+        copyWrap.appendChild(copyBox);
+        copyWrap.appendChild(copyBtn);
+        stepEl.appendChild(copyWrap);
+      }
+
+      if (step.image) {
+        const row = el_("div", "plan-row");
+        row.innerHTML = `<span class="plan-row__label">${IC.img} ภาพ</span><span class="plan-row__val plan-row__val--muted">${esc(step.image)}</span>`;
+        stepEl.appendChild(row);
+      }
+
+      if (step.goal) {
+        const row = el_("div", "plan-row");
+        row.innerHTML = `<span class="plan-row__label">${IC.arrow} เป้า</span><span class="plan-row__val">${esc(step.goal)}</span>`;
+        stepEl.appendChild(row);
+      }
+
+      if (step.cta) {
+        const ctaEl = el_("div", "plan-cta");
+        ctaEl.innerHTML = `<span class="plan-cta__label">หลังโพสต์:</span> ${esc(step.cta)}`;
+        stepEl.appendChild(ctaEl);
+      }
+
+      sec.appendChild(stepEl);
+    }
+
+    // Pitch timing & product pitch
+    if (pitch_timing || product_pitch) {
+      const pitchWrap = el_("div", "pitch-wrap");
+
+      if (pitch_timing) {
+        const row = el_("div", "pitch-row");
+        row.innerHTML = `<div class="pitch-row__label">${IC.clock} เสนอขายเมื่อไหร่</div><div class="pitch-row__val">${esc(pitch_timing)}</div>`;
+        pitchWrap.appendChild(row);
+      }
+
+      if (product_pitch) {
+        const row = el_("div", "pitch-row");
+        row.innerHTML = `<div class="pitch-row__label">${IC.msg} อธิบายระบบ</div><div class="pitch-row__val">${esc(product_pitch)}</div>`;
+        pitchWrap.appendChild(row);
+      }
+
+      sec.appendChild(pitchWrap);
+    }
+
+    card.appendChild(sec);
+  }
+
+  // ── 4. Content ideas ──────────────────────────────────────────────────────
   if (content_ideas.length) {
-    const sec = section("📝 ไอเดียโพสต์ / คอนเทนต์", "result-section--ideas");
+    const sec = section(IC.bulb, "ไอเดียคอนเทนต์เพิ่มเติม", "result-section--ideas");
     const list = el_("ul", "ideas-list");
     for (const idea of content_ideas) {
       const li = document.createElement("li");
-      li.appendChild(document.createTextNode(idea));
+      li.innerHTML = `<span class="idea-dot"></span><span>${esc(idea)}</span>`;
       list.appendChild(li);
     }
     sec.appendChild(list);
     card.appendChild(sec);
   }
 
-  // 4. Draft message (Sales Assistant)
+  // ── 5. Draft message ──────────────────────────────────────────────────────
   if (draft?.message) {
-    const sec = section("💬 ข้อความทักลูกค้า (ร่างจาก Sales Assistant)", "result-section--draft");
+    const sec = section(IC.msg, "ข้อความทักลูกค้า (ร่างจาก Sales Assistant)", "result-section--draft");
 
     const box = el_("div", "draft-box");
     box.textContent = draft.message;
     sec.appendChild(box);
 
-    // Copy button
     const copyBtn = el_("button", "copy-btn");
     copyBtn.type = "button";
-    copyBtn.innerHTML = `📋 คัดลอกข้อความ`;
+    copyBtn.innerHTML = `${IC.copy} คัดลอกข้อความ`;
     copyBtn.addEventListener("click", () => {
       navigator.clipboard.writeText(draft.message).then(() => {
-        copyBtn.textContent = "✓ คัดลอกแล้ว";
+        copyBtn.innerHTML = `${IC.done} คัดลอกแล้ว`;
         copyBtn.classList.add("copy-btn--copied");
         setTimeout(() => {
-          copyBtn.textContent = "📋 คัดลอกข้อความ";
+          copyBtn.innerHTML = `${IC.copy} คัดลอกข้อความ`;
           copyBtn.classList.remove("copy-btn--copied");
         }, 2000);
       });
     });
     sec.appendChild(copyBtn);
 
-    // Approve / reject buttons
     if (draft.approval_id) {
       const actions = el_("div", "draft-approval");
       actions.innerHTML = `
@@ -261,30 +371,33 @@ function renderFinal(ev) {
     card.appendChild(sec);
   }
 
-  // 5. Founder actions
+  // ── 6. Founder actions (AI thinks → คุณ action) ───────────────────────────
   if (founder_actions.length) {
-    const sec = section("✅ ต้องทำตอนนี้", "result-section--actions");
-    const list = el_("ul", "result-list result-list--actions");
-    for (const action of founder_actions) {
+    const sec = section(IC.check, "สิ่งที่คุณต้องทำ", "result-section--actions");
+    const list = el_("ul", "task-list");
+    founder_actions.forEach((action, i) => {
       const li = document.createElement("li");
-      li.textContent = action;
+      li.className = "task-item";
+      li.innerHTML = `
+        <span class="task-num">${i + 1}</span>
+        <span class="task-body">${esc(action)}</span>`;
       list.appendChild(li);
-    }
+    });
     sec.appendChild(list);
     card.appendChild(sec);
   }
 
-  // 6. AI actions (compact, secondary)
+  // ── 7. AI actions ─────────────────────────────────────────────────────────
   if (ai_actions.length) {
-    const sec = section("🤖 AI จะทำต่อเอง");
-    sec.appendChild(ul_(ai_actions, "result-list"));
+    const sec = section(IC.cpu, "AI จะทำต่อเอง");
+    sec.appendChild(ul_(ai_actions, "result-list result-list--ai"));
     card.appendChild(sec);
   }
 
-  // 7. Missing info (only if there's real missing data, not just LLM unavailable)
+  // ── 8. Missing info ───────────────────────────────────────────────────────
   const realMissing = missing_info.filter(m => !m.includes("AI ไม่พร้อมใช้งาน"));
   if (realMissing.length) {
-    const sec = section("⚠️ ข้อมูลที่ยังขาด");
+    const sec = section(IC.alert, "ข้อมูลที่ยังขาด");
     sec.appendChild(ul_(realMissing, "result-list result-list--warn"));
     card.appendChild(sec);
   }
@@ -294,10 +407,10 @@ function renderFinal(ev) {
 }
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
-function section(label, extraClass = "") {
+function section(iconHtml, label, extraClass = "") {
   const sec = el_("div", `result-section ${extraClass}`.trim());
   const lbl = el_("div", "section-label");
-  lbl.textContent = label;
+  lbl.innerHTML = `<span class="section-icon">${iconHtml}</span>${label}`;
   sec.appendChild(lbl);
   return sec;
 }
@@ -327,7 +440,7 @@ function appendToResult(el) {
 
 function errorBanner(msg) {
   const el = el_("div", "error-banner");
-  el.textContent = `⚠️ ${msg}`;
+  el.innerHTML = `${IC.alert} ${esc(msg)}`;
   return el;
 }
 

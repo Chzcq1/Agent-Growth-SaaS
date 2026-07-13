@@ -7,7 +7,7 @@
   <!-- ── INPUT ─────────────────────────────────────────────────────────── -->
   <section class="vo-input">
     <h1>Virtual Office</h1>
-    <p class="subtitle">แปะโพสต์ บทสนทนา หรือ Feedback — ทีม AI จะวิเคราะห์และวางแผนให้ทันที</p>
+    <p class="subtitle">แปะโพสต์ บทสนทนา หรือ Feedback จาก Facebook — ทีม AI จะวิเคราะห์ วางแผนคอนเทนต์ ร่างข้อความ และแบ่งงานให้ทันที</p>
     <form id="office-form" class="input-form">
       <textarea id="raw-text-input" name="raw_text" rows="5"
         placeholder="เช่น: คอมเมนต์จาก Facebook กลุ่ม / บทสนทนากับลีด / Feedback จากร้าน / ปัญหาที่ลูกค้าเจอ..."
@@ -75,7 +75,7 @@
   <!-- ── PENDING APPROVALS ──────────────────────────────────────────────── -->
   {% if pending_approvals %}
   <details class="approvals-details">
-    <summary class="approvals-summary">✏️ ข้อความร่างที่รออนุมัติ ({{ pending_approvals|length }})</summary>
+    <summary class="approvals-summary"><span class="approvals-toggle">▶</span> ข้อความร่างที่รออนุมัติ ({{ pending_approvals|length }})</summary>
     <div class="card-list" style="margin-top:12px">
       {% for approval in pending_approvals %}
       <article class="approval-card">

@@ -33,6 +33,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.agents import (
+    content_strategist_agent,
     customer_success_agent,
     demo_agent,
     lead_hunter,
@@ -60,6 +61,7 @@ AGENT_MODULES = {
     "onboarding_agent": onboarding_agent,
     "customer_success_agent": customer_success_agent,
     "product_analyst_agent": product_analyst_agent,
+    "content_strategist": content_strategist_agent,
 }
 
 
@@ -316,6 +318,13 @@ async def run_office(db: Session, raw_text: str) -> dict:
 
     questions, team_notes = _collect_questions_and_notes(list(results_by_agent.values()))
 
+    # Extract Content Strategist specific structured fields
+    cs_result = results_by_agent.get("content_strategist")
+    content_plan = cs_result.get("content_plan") or [] if cs_result else []
+    target_profile = cs_result.get("target_profile") or "" if cs_result else ""
+    pitch_timing = cs_result.get("pitch_timing") or "" if cs_result else ""
+    product_pitch = cs_result.get("product_pitch") or "" if cs_result else ""
+
     return {
         "agents_run": [AGENT_MODULES[name].LABEL_TH for name in selected],
         "plan_trace": plan_trace,
@@ -324,6 +333,10 @@ async def run_office(db: Session, raw_text: str) -> dict:
         "team_notes": team_notes,
         "key_findings": key_findings,
         "content_ideas": content_ideas,
+        "content_plan": content_plan,
+        "target_profile": target_profile,
+        "pitch_timing": pitch_timing,
+        "product_pitch": product_pitch,
         "founder_actions": founder_actions,
         "ai_actions": ai_actions,
         "missing_info": missing_info,
@@ -339,12 +352,13 @@ async def run_office(db: Session, raw_text: str) -> dict:
 # ---------------------------------------------------------------------------
 
 AGENT_EMOJI = {
-    "lead_hunter": "🔍",
-    "sales_assistant": "💬",
-    "demo_agent": "📊",
-    "onboarding_agent": "🛠️",
-    "customer_success_agent": "❤️",
-    "product_analyst_agent": "📋",
+    "lead_hunter": "lead_hunter",
+    "sales_assistant": "sales_assistant",
+    "demo_agent": "demo_agent",
+    "onboarding_agent": "onboarding_agent",
+    "customer_success_agent": "customer_success_agent",
+    "product_analyst_agent": "product_analyst_agent",
+    "content_strategist": "content_strategist",
 }
 
 
@@ -516,6 +530,13 @@ async def stream_run_office(db: Session, raw_text: str):
         list(results_by_agent.values())
     )
 
+    # Extract Content Strategist structured fields
+    cs_result = results_by_agent.get("content_strategist")
+    content_plan = cs_result.get("content_plan") or [] if cs_result else []
+    target_profile = cs_result.get("target_profile") or "" if cs_result else ""
+    pitch_timing = cs_result.get("pitch_timing") or "" if cs_result else ""
+    product_pitch = cs_result.get("product_pitch") or "" if cs_result else ""
+
     # Save OfficeRun to DB so the static fallback (/GET) still works
     run = OfficeRun(
         raw_text=raw_text,
@@ -545,6 +566,10 @@ async def stream_run_office(db: Session, raw_text: str):
         "agents_run": [AGENT_MODULES[n].LABEL_TH for n in selected],
         "key_findings": key_findings,
         "content_ideas": content_ideas,
+        "content_plan": content_plan,
+        "target_profile": target_profile,
+        "pitch_timing": pitch_timing,
+        "product_pitch": product_pitch,
         "founder_actions": founder_actions,
         "ai_actions": ai_actions,
         "missing_info": missing_info,
