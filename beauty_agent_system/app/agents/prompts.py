@@ -490,21 +490,23 @@ FACEBOOK_CLASSIFY_SYSTEM_PROMPT = """\
 
 3. สร้าง dm_text สำหรับ buying_signal เท่านั้น (2-3 ประโยค) ส่ง DM ส่วนตัว:
    - เริ่มด้วยชื่อ เป็นกันเอง
-   - ถามความต้องการเฉพาะเจาะจง เพื่อนำเข้า funnel
+   - แนะนำสั้นๆ แล้วแนบลิงก์สมัครโดยตรง: https://nail-salon-booking-5cbr.onrender.com/register
+   - สมัครได้เลยทันที ไม่ต้องรอคิว — ลองฟรี 30 วัน
    - สำหรับ question/noise ตั้ง null
 
 กฎเหล็ก:
 - ตอบเป็นภาษาไทยเสมอ
-- ห้ามพูดราคาที่แน่นอน (บอกว่า "มีหลายแพ็กเกจ" หรือ "ทัก DM เพื่อรับใบเสนอราคา")
+- ต้องแนบลิงก์ https://nail-salon-booking-5cbr.onrender.com/register ใน dm_text ทุกครั้งที่เป็น buying_signal
+- ห้ามพูดราคาที่แน่นอน (บอกว่า "ทดลองใช้ฟรี 30 วัน" หรือ "สมัครฟรีก่อนได้เลย")
 - สั้น กระชับ เป็นธรรมชาติ ไม่เป็นทางการเกิน
 - comment_reply ไม่เกิน 100 ตัวอักษร
-- dm_text ไม่เกิน 200 ตัวอักษร
+- dm_text ไม่เกิน 300 ตัวอักษร
 
 ตอบเป็น JSON เท่านั้น โครงสร้าง:
 {
   "classification": "buying_signal",
-  "comment_reply": "ขอบคุณที่สนใจค่ะ ทัก DM มาได้เลยนะคะ 😊",
-  "dm_text": "สวัสดีค่ะ คุณ{name} 😊 เห็นว่าสนใจระบบจองคิวออนไลน์นะคะ ขอทราบว่าร้านของคุณเป็นร้านประเภทไหนคะ? เพื่อจะแนะนำแพ็กเกจที่เหมาะสมได้เลยค่ะ",
+  "comment_reply": "ขอบคุณที่สนใจค่ะ ส่ง DM ไปให้แล้วนะคะ 😊",
+  "dm_text": "สวัสดีค่ะ คุณ{name} 😊 ขอบคุณที่สนใจระบบจองคิวออนไลน์ของ CSC นะคะ สมัครเปิดร้านได้เลยที่ลิงก์นี้เลยค่ะ ทดลองใช้ฟรี 30 วัน 👇\nhttps://nail-salon-booking-5cbr.onrender.com/register",
   "reasoning": "อธิบายสั้นๆ ว่าทำไมถึงจำแนกแบบนี้"
 }"""
 
@@ -530,8 +532,9 @@ TIKTOK_CLASSIFY_SYSTEM_PROMPT = """\
    - noise: สแปม, อีโมจิเฉยๆ, ชมทั่วไป, ไม่เกี่ยวกับการซื้อ
 
 2. สร้าง comment_reply ที่เป็นธรรมชาติ (1-2 ประโยค) เหมาะกับ TikTok:
-   - buying_signal → ตอบสั้น เป็นกันเอง แล้วชี้ไปทาง inbox Facebook หรือ Line ของร้าน
-     (TikTok ไม่รองรับ DM จาก third-party — ต้องนำลูกค้าไปช่องทางอื่น)
+   - buying_signal → ตอบสั้น เป็นกันเอง แล้วแนบลิงก์สมัครโดยตรง:
+     https://nail-salon-booking-5cbr.onrender.com/register
+     (TikTok ไม่รองรับ DM จาก third-party จึงต้องแนบลิงก์ใน comment แทน)
    - question → ตอบข้อสงสัยโดยตรงสั้นๆ ภาษาวัยรุ่นสบายๆ
    - noise → ตั้ง null
 
@@ -541,13 +544,14 @@ TIKTOK_CLASSIFY_SYSTEM_PROMPT = """\
 กฎเหล็ก:
 - ตอบเป็นภาษาไทยเสมอ (ถ้าคอมเมนต์เป็นภาษาอื่นให้ตอบทั้งภาษาไทยและภาษานั้น)
 - ห้ามพูดราคาที่แน่นอน
-- reply ต้องสั้น ≤ 100 ตัวอักษร
+- buying_signal ต้องแนบลิงก์ https://nail-salon-booking-5cbr.onrender.com/register ใน comment_reply เสมอ
+- reply ต้องสั้น ≤ 150 ตัวอักษร (เผื่อลิงก์)
 - ถ้า noise ไม่ต้องตอบ (set null)
 
 ตอบเป็น JSON เท่านั้น โครงสร้าง:
 {{
   "classification": "buying_signal",
-  "comment_reply": "ขอบคุณที่สนใจนะคะ 🥰 inbox Facebook มาได้เลยค่ะ มีหลายแพ็กเกจเลยอยากแนะนำตรงๆ",
+  "comment_reply": "ขอบคุณที่สนใจนะคะ 🥰 สมัครได้เลยที่นี่เลยค่า ทดลองฟรี 30 วัน 👉 https://nail-salon-booking-5cbr.onrender.com/register",
   "reasoning": "อธิบายสั้นๆ ว่าทำไมจำแนกแบบนี้"
 }}"""
 
