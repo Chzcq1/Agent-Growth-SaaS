@@ -636,6 +636,7 @@ function handleEvent(ev) {
     case "planning":   hideThinkingCloud(); updateProgressAgents(ev.plan_trace?.assignments || []); break;
     case "agent_start": markAgentTyping(ev.agent); break;
     case "agent_done": markAgentDone(ev.agent); renderInterimAgentCard(ev); break;
+    case "reviewing":  showThinkingCloud(ev.text || "กำลังตรวจสอบและสรุปผล..."); break;
     case "token":      appendToken(ev.text || ""); break;
     case "final":      onFinal(ev); break;
     case "error":      appendToThread(errorBanner(ev.message)); break;

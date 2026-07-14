@@ -578,12 +578,14 @@ async def stream_run_office(
             "answer_text": ga_result.get("answer_text"),
         }
 
-    # ── Stage 2: QA review + rework (silent — no UI events) ─────────────
+    # ── Stage 2: QA review + rework ──────────────────────────────────────
     # Skipped for a pure general_assistant reply -- a freeform chat answer
     # has nothing to QA against the CSC action-plan shape.
     key_findings, content_ideas, founder_actions, ai_actions, missing_info = _merge_results(
         [results_by_agent[n] for n in selected if n in results_by_agent]
     )
+    if selected != ["general_assistant"]:
+        yield {"type": "reviewing", "text": "กำลังตรวจสอบและสรุปผล..."}
     review = (
         {"sufficient": True, "rework": [], "note": None}
         if selected == ["general_assistant"]
