@@ -99,12 +99,18 @@ async def verify_webhook_handshake(request: Request):
 # ── Webhook: real-time events ────────────────────────────────────────────────
 
 async def _handle_dm_background(psid: str, contact_name: str, message_text: str) -> None:
+    from app import facebook_client
     from app.facebook_dm_pipeline import handle_incoming_dm
+
+    # Try to get the real sender name from the Graph API; fall back to the
+    # name passed in (usually "ลูกค้า Facebook") if the profile call fails.
+    profile = await facebook_client.get_user_profile(psid)
+    resolved_name = profile.get("name") or contact_name
 
     session_factory = get_session_factory()
     db = session_factory()
     try:
-        await handle_incoming_dm(db, psid=psid, contact_name=contact_name, message_text=message_text)
+        await handle_incoming_dm(db, psid=psid, contact_name=resolved_name, message_text=message_text)
     except Exception:  # noqa: BLE001
         logger.exception("Facebook DM handling failed for psid=%s", psid)
         db.rollback()
@@ -163,6 +169,86 @@ async def receive_webhook(request: Request, background_tasks: BackgroundTasks):
         background_tasks.add_task(_trigger_immediate_comment_scan)
 
     return {"ok": True, "message": saw_message, "comment": saw_comment}
+
+
+# ── DM health / diagnostics ──────────────────────────────────────────────────
+
+@router.get("/dm/health")
+async def dm_health():
+    """Diagnostic endpoint that tells the founder exactly what is missing for
+    Messenger DM replies to work.
+
+    Returns a JSON object with:
+      - configured: dict of which settings are set (not their values)
+      - pages_messaging_granted: whether the token has the pages_messaging scope
+      - checklist: ordered list of human-readable steps still needed
+    """
+    settings = get_settings()
+
+    configured = {
+        "FACEBOOK_ENABLED":               settings.facebook_enabled,
+        "FACEBOOK_PAGE_ID":               bool(settings.facebook_page_id),
+        "FACEBOOK_PAGE_ACCESS_TOKEN":     bool(settings.facebook_page_access_token),
+        "FACEBOOK_APP_SECRET":            bool(settings.facebook_app_secret),
+        "FACEBOOK_WEBHOOK_VERIFY_TOKEN":  bool(settings.facebook_webhook_verify_token),
+    }
+
+    pages_messaging_granted: bool | None = None
+    if settings.facebook_enabled and settings.facebook_page_access_token:
+        pages_messaging_granted = await facebook_client.check_pages_messaging_permission()
+
+    checklist = []
+
+    if not settings.facebook_enabled:
+        checklist.append(
+            "ตั้ง FACEBOOK_ENABLED=true ใน Replit Secrets"
+        )
+    if not settings.facebook_page_id:
+        checklist.append(
+            "ตั้ง FACEBOOK_PAGE_ID — ID ของ Facebook Page ของคุณ "
+            "(เช่น 123456789)"
+        )
+    if not settings.facebook_page_access_token:
+        checklist.append(
+            "ตั้ง FACEBOOK_PAGE_ACCESS_TOKEN — Page Access Token จาก "
+            "Meta for Developers → Your App → Facebook Login → Settings → "
+            "Token Generation; ใช้ User Token ก็ได้แล้ว code จะ resolve เป็น Page Token เอง"
+        )
+    if not settings.facebook_app_secret:
+        checklist.append(
+            "ตั้ง FACEBOOK_APP_SECRET — App Secret จาก "
+            "Meta for Developers → Your App → Settings → Basic"
+        )
+    if not settings.facebook_webhook_verify_token:
+        checklist.append(
+            "ตั้ง FACEBOOK_WEBHOOK_VERIFY_TOKEN — ตั้งเป็นอะไรก็ได้ เช่น 'my-verify-token-2026' "
+            "แล้วใส่ค่าเดียวกันใน Meta App Dashboard → Webhooks → Verify Token"
+        )
+
+    if settings.facebook_enabled and settings.facebook_page_access_token:
+        if pages_messaging_granted is False:
+            checklist.append(
+                "เพิ่ม pages_messaging permission ให้ Page Token: "
+                "Meta App Dashboard → App Review → Permissions → ขอ pages_messaging "
+                "(หรือเปิด Advanced Access ถ้า App ยัง Development Mode อยู่)"
+            )
+        elif pages_messaging_granted:
+            checklist.append("✅ pages_messaging permission: granted")
+
+    if settings.facebook_enabled:
+        checklist.append(
+            "ตั้งค่า Webhook ใน Meta App Dashboard: "
+            "Webhooks → Page → Subscribe → ติ๊กทั้ง 'feed' (สำหรับ comment) "
+            "และ 'messages' (สำหรับ DM/Messenger) — "
+            "ถ้าติ๊กแค่ feed อยู่ DM จะไม่เข้ามาที่ server เลย"
+        )
+
+    return {
+        "configured": configured,
+        "pages_messaging_granted": pages_messaging_granted,
+        "checklist": checklist,
+        "webhook_url_hint": "POST /facebook/webhook (ต้องเป็น HTTPS public URL, Render URL ก็ใช้ได้)",
+    }
 
 
 # ── DM founder-review queue ──────────────────────────────────────────────────

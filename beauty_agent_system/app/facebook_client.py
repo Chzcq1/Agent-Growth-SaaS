@@ -166,6 +166,60 @@ async def post_comment_reply(comment_id: str, message: str) -> dict:
         return resp.json()
 
 
+# ── User profile lookup ───────────────────────────────────────────────────────
+
+async def get_user_profile(psid: str) -> dict:
+    """Return basic profile info (name, profile_pic) for a Messenger PSID.
+
+    Requires the ``pages_messaging`` permission on the Page token.
+    Returns an empty dict on any error so callers can fall back gracefully.
+    """
+    if not _enabled():
+        return {}
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(
+                f"{GRAPH_BASE}/{psid}",
+                params={
+                    "access_token": await _resolve_page_token(),
+                    "fields": "name,profile_pic",
+                },
+            )
+            resp.raise_for_status()
+            return resp.json()
+    except httpx.HTTPError as exc:
+        logger.warning("get_user_profile failed for psid=%s: %s", psid, exc)
+        return {}
+
+
+# ── Token permission check ────────────────────────────────────────────────────
+
+async def check_pages_messaging_permission() -> bool:
+    """Return True if the resolved Page token has the pages_messaging permission.
+
+    Uses /me/permissions to inspect granted scopes. Call from the health
+    endpoint to surface missing Messenger permission early.
+    """
+    if not _enabled():
+        return False
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(
+                f"{GRAPH_BASE}/me/permissions",
+                params={"access_token": await _resolve_page_token()},
+            )
+            resp.raise_for_status()
+            perms = {
+                p["permission"]
+                for p in resp.json().get("data", [])
+                if p.get("status") == "granted"
+            }
+            return "pages_messaging" in perms
+    except httpx.HTTPError as exc:
+        logger.warning("permission check failed: %s", exc)
+        return False
+
+
 # ── Messenger DM ──────────────────────────────────────────────────────────────
 
 async def send_dm(psid: str, message: str) -> dict:

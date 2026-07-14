@@ -134,6 +134,49 @@ cd beauty_agent_system
 pytest tests/test_rate_limiter.py -v
 ```
 
+## Enabling Messenger DM replies
+
+The AI can already reply to Facebook **comments** (via the 5-minute poller).
+To also reply to **Messenger DMs / แชท**, three extra steps are needed:
+
+### Step 1 — Extra secrets
+
+Add these four secrets (Replit Secrets or Render Environment tab):
+
+| Secret | Where to get it |
+|--------|----------------|
+| `FACEBOOK_APP_SECRET` | Meta for Developers → Your App → Settings → Basic → App Secret |
+| `FACEBOOK_WEBHOOK_VERIFY_TOKEN` | ตั้งเองได้เลย เช่น `csc-verify-2026` แล้วใส่ค่าเดียวกันใน Meta App Dashboard |
+| `FACEBOOK_ENABLED` | ตั้งเป็น `true` |
+| `FACEBOOK_PAGE_ID` | ID ของ Facebook Page (ตัวเลข เช่น `123456789`) |
+| `FACEBOOK_PAGE_ACCESS_TOKEN` | Page Access Token — ดูได้จาก Meta for Developers → Your App → Facebook Login → Settings → Token Generation |
+
+### Step 2 — Add Messenger product + pages_messaging permission
+
+1. Meta for Developers → Your App → Add Product → **Messenger**
+2. App Review → Permissions → ขอ **`pages_messaging`**
+   (ถ้า App ยังอยู่ใน Development Mode ให้กด "Advanced Access" ใต้ permission นั้น)
+3. Messenger → Settings → เชื่อม App กับ Page ของคุณ
+
+### Step 3 — Subscribe Webhook to `messages` events
+
+1. Meta for Developers → Your App → Webhooks → **Page**
+2. Subscribe ด้วย Callback URL = `https://<your-render-url>/facebook/webhook`
+   และ Verify Token = ค่าเดียวกับ `FACEBOOK_WEBHOOK_VERIFY_TOKEN`
+3. หลัง subscribe แล้ว ติ๊ก Field ให้ครบทั้งสองอัน:
+   - **`feed`** — สำหรับ comment (ตอนนี้น่าจะติ๊กอยู่แล้ว)
+   - **`messages`** — สำหรับ Messenger DM (ถ้ายังไม่ได้ติ๊กนี่คือสาเหตุที่ DM ไม่เข้า)
+
+### Step 4 — ตรวจสอบว่าพร้อมแล้ว
+
+```bash
+curl https://<your-render-url>/facebook/dm/health
+```
+
+Endpoint นี้จะบอกว่ายังขาด permission อะไร / ตั้ง secret อะไรยังไม่ครบ
+
+---
+
 ## Deploying to Render + Neon DB
 
 1. **Neon**: create a project at neon.tech, copy its connection string into
