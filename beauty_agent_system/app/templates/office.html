@@ -38,38 +38,6 @@
     <div id="result-area"></div>
     <div id="static-result" class="hidden"></div>
 
-    <!-- ── PENDING APPROVALS ────────────────────────────────────────────── -->
-    {% if pending_approvals %}
-    <details class="approvals-details">
-      <summary class="approvals-summary"><span class="approvals-toggle">▶</span> ข้อความร่างที่รออนุมัติ ({{ pending_approvals|length }})</summary>
-      <div class="card-list" style="margin-top:12px">
-        {% for approval in pending_approvals %}
-        <article class="approval-card">
-          <div class="approval-card__header">
-            <strong>ร่างทัก Messenger</strong>
-            <time>{{ approval.created_at.strftime('%d/%m/%y %H:%M') }}</time>
-          </div>
-          <p class="draft-preview">{{ approval.draft_message }}</p>
-          {% if approval.reasoning %}
-          <details class="reasoning"><summary>เหตุผลที่เลือกมุมนี้</summary><p>{{ approval.reasoning }}</p></details>
-          {% endif %}
-          <div class="approval-card__actions">
-            <form method="post" action="/approvals/{{ approval.id }}/approve">
-              <button type="submit" class="btn btn--success btn--sm">อนุมัติ</button>
-            </form>
-            <form method="post" action="/approvals/{{ approval.id }}/reject">
-              <button type="submit" class="btn btn--danger btn--sm">ไม่ใช้</button>
-            </form>
-            <form method="post" action="/approvals/{{ approval.id }}/edit" style="flex:1">
-              <input type="text" name="edited_message" value="{{ approval.draft_message }}" required />
-              <button type="submit" class="btn btn--primary btn--sm" style="margin-top:6px">แก้แล้วใช้</button>
-            </form>
-          </div>
-        </article>
-        {% endfor %}
-      </div>
-    </details>
-    {% endif %}
 
   </div>
 

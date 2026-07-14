@@ -1017,6 +1017,50 @@ details[open] .approvals-toggle { transform: rotate(90deg); }
 }
 .feedback-row__note { font-size: 0.79rem; color: var(--muted); font-style: italic; }
 
+/* ── Custom confirm modal ────────────────────────────────────────────────────── */
+.vo-modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: rgba(28, 25, 23, 0.45);
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.vo-modal-overlay--open { display: flex; }
+.vo-modal {
+  background: #fff;
+  border-radius: 16px;
+  padding: 28px 28px 22px;
+  max-width: 340px;
+  width: 100%;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18), 0 2px 8px rgba(0, 0, 0, 0.08);
+  animation: vo-modal-in 0.16s cubic-bezier(0.34, 1.26, 0.64, 1);
+}
+@keyframes vo-modal-in {
+  from { transform: scale(0.92) translateY(6px); opacity: 0; }
+  to   { transform: scale(1)    translateY(0);   opacity: 1; }
+}
+.vo-modal__title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--ink);
+  margin: 0 0 6px;
+}
+.vo-modal__body {
+  font-size: 0.875rem;
+  color: var(--muted);
+  margin: 0 0 22px;
+  line-height: 1.5;
+}
+.vo-modal__body:empty { display: none; }
+.vo-modal__actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 /* Responsive */
 @media (max-width: 640px) {
   .approval-card__actions { flex-direction: column; }

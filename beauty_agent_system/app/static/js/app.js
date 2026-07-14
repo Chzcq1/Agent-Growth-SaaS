@@ -66,6 +66,43 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 });
 
+// ─── Custom confirm modal (replaces browser's ugly confirm()) ─────────────────
+function showConfirmModal(title, body, confirmLabel = "ยืนยัน") {
+  return new Promise((resolve) => {
+    let overlay = document.getElementById("vo-confirm-overlay");
+    if (!overlay) {
+      overlay = document.createElement("div");
+      overlay.id = "vo-confirm-overlay";
+      overlay.className = "vo-modal-overlay";
+      overlay.innerHTML = `
+        <div class="vo-modal" role="dialog" aria-modal="true">
+          <p class="vo-modal__title"></p>
+          <p class="vo-modal__body"></p>
+          <div class="vo-modal__actions">
+            <button class="btn btn--sm vo-modal__cancel">ยกเลิก</button>
+            <button class="btn btn--danger btn--sm vo-modal__ok"></button>
+          </div>
+        </div>`;
+      document.body.appendChild(overlay);
+    }
+    overlay.querySelector(".vo-modal__title").textContent = title;
+    overlay.querySelector(".vo-modal__body").textContent = body || "";
+    overlay.querySelector(".vo-modal__ok").textContent = confirmLabel;
+    overlay.classList.add("vo-modal-overlay--open");
+
+    const finish = (result) => {
+      overlay.classList.remove("vo-modal-overlay--open");
+      overlay.querySelector(".vo-modal__cancel").onclick = null;
+      overlay.querySelector(".vo-modal__ok").onclick = null;
+      overlay.onclick = null;
+      resolve(result);
+    };
+    overlay.querySelector(".vo-modal__cancel").onclick = () => finish(false);
+    overlay.querySelector(".vo-modal__ok").onclick    = () => finish(true);
+    overlay.onclick = (e) => { if (e.target === overlay) finish(false); };
+  });
+}
+
 // ─── Sidebar: collapse toggle + new chat + delete ─────────────────────────────
 const SIDEBAR_COLLAPSED_KEY = "vo_sidebar_collapsed";
 
@@ -97,7 +134,8 @@ function initSidebar() {
       e.preventDefault();
       e.stopPropagation();
       const id = btn.dataset.id;
-      if (!confirm("ลบแชทนี้เลยไหม? ข้อมูลในแชทนี้จะหายไปหมด")) return;
+      const confirmed = await showConfirmModal("ลบแชทนี้เลยไหม?", "ข้อมูลในแชทนี้จะหายไปหมด", "ลบแชท");
+      if (!confirmed) return;
       try {
         await fetch(`/conversations/${id}`, { method: "DELETE" });
         const activeId = document.getElementById("conversation-list")?.dataset.active;
@@ -690,18 +728,6 @@ function buildResultCard(ev, { live } = {}) {
       });
     });
     sec.appendChild(copyBtn);
-
-    if (draft.approval_id) {
-      const actions = el_("div", "draft-approval");
-      actions.innerHTML = `
-        <form method="post" action="/approvals/${draft.approval_id}/approve">
-          <button type="submit" class="btn btn--success btn--sm">อนุมัติ — ใช้ตามนี้</button>
-        </form>
-        <form method="post" action="/approvals/${draft.approval_id}/reject">
-          <button type="submit" class="btn btn--danger btn--sm">ไม่ใช้</button>
-        </form>`;
-      sec.appendChild(actions);
-    }
 
     if (draft.reasoning) {
       const details = document.createElement("details");
