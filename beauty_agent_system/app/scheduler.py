@@ -55,8 +55,44 @@ def _prune_old_api_usage_log() -> None:
         db.close()
 
 
+async def _scan_facebook_comments() -> None:
+    """Poll Facebook Page for new comments and process them (Task #6).
+
+    Runs every N minutes (FACEBOOK_POLL_INTERVAL_MINUTES, default 5).
+    Safe no-op when FACEBOOK_ENABLED=false.
+    """
+    from app.config import get_settings
+    settings = get_settings()
+    if not settings.facebook_enabled:
+        return
+
+    from app.database import get_session_factory
+    from app.facebook_pipeline import process_new_comments
+
+    session_factory = get_session_factory()
+    db = session_factory()
+    try:
+        count = await process_new_comments(db)
+        if count:
+            logger.info("Facebook scan: %s comment(s) acted on", count)
+    except Exception:  # noqa: BLE001
+        logger.exception("Facebook comment scan failed")
+        db.rollback()
+    finally:
+        db.close()
+
+
 def start_scheduler() -> AsyncIOScheduler:
+    from app.config import get_settings
+    settings = get_settings()
+
     scheduler = AsyncIOScheduler()
     scheduler.add_job(_prune_old_api_usage_log, "interval", hours=24, next_run_time=datetime.now())
+    scheduler.add_job(
+        _scan_facebook_comments,
+        "interval",
+        minutes=settings.facebook_poll_interval_minutes,
+        id="scan_facebook_comments",
+    )
     scheduler.start()
     return scheduler

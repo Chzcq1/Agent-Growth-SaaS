@@ -163,9 +163,10 @@ const STAGE_OPTIONS = [
 ];
 
 const PANEL_MAP = {
-  chats:  "conversation-list",
-  leads:  "leads-panel",
-  inbox:  "inbox-panel",
+  chats:    "conversation-list",
+  leads:    "leads-panel",
+  inbox:    "inbox-panel",
+  facebook: "facebook-panel",
 };
 
 let _inboxPollTimer = null;
@@ -186,6 +187,7 @@ function initSidebarTabs() {
         if (panel) panel.classList.toggle("sidebar__panel--active", key === target);
       });
       if (target === "leads") loadLeads();
+      if (target === "facebook") loadFacebookLeads();
       if (target === "inbox") {
         loadInbox();
         startInboxPolling();
@@ -340,6 +342,70 @@ function buildLeadItem(lead) {
   footer.appendChild(sel);
   footer.appendChild(lastContact);
   item.appendChild(name);
+  item.appendChild(footer);
+  return item;
+}
+
+// ─── Facebook prospecting log ──────────────────────────────────────────────────
+async function loadFacebookLeads() {
+  const list = document.getElementById("facebook-list");
+  const status = document.getElementById("facebook-status");
+  if (!list) return;
+  try {
+    const resp = await fetch("/facebook/leads");
+    if (!resp.ok) throw new Error(resp.statusText);
+    const leads = await resp.json();
+    if (!leads.length) {
+      list.innerHTML = '<p class="leads-empty">ยังไม่มีลีดจาก Facebook\n(เปิดใช้งาน FACEBOOK_ENABLED=true)</p>';
+      if (status) status.textContent = "ว่าง";
+      return;
+    }
+    if (status) status.textContent = `${leads.length} คน`;
+    list.innerHTML = "";
+    leads.forEach((lead) => list.appendChild(buildFacebookLeadItem(lead)));
+  } catch (e) {
+    list.innerHTML = `<p class="leads-empty">โหลดไม่ได้: ${e.message}</p>`;
+  }
+}
+
+function buildFacebookLeadItem(lead) {
+  const item = el_("div", "lead-item fb-lead-item");
+
+  // Name + stage badge
+  const name = el_("div", "lead-item__name");
+  name.textContent = lead.shop_name;
+  const badge = el_("span", "stage-badge");
+  badge.textContent = lead.stage_label;
+  badge.style.background = lead.stage_color || "#1877F2";
+  name.appendChild(badge);
+
+  // Comment snippet
+  if (lead.comment_snippet) {
+    const snippet = el_("div", "fb-lead__snippet");
+    snippet.textContent = `💬 "${lead.comment_snippet}"`;
+    item.appendChild(name);
+    item.appendChild(snippet);
+  } else {
+    item.appendChild(name);
+  }
+
+  // Footer: Facebook link + time
+  const footer = el_("div", "lead-item__footer");
+  if (lead.facebook_url) {
+    const link = document.createElement("a");
+    link.href = lead.facebook_url;
+    link.target = "_blank";
+    link.rel = "noopener";
+    link.className = "fb-lead__link";
+    link.textContent = "ดูโปรไฟล์";
+    footer.appendChild(link);
+  }
+  const timeEl = el_("span", "lead-item__last-contact");
+  if (lead.created_at) {
+    const d = new Date(lead.created_at);
+    timeEl.textContent = d.toLocaleDateString("th-TH", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  }
+  footer.appendChild(timeEl);
   item.appendChild(footer);
   return item;
 }

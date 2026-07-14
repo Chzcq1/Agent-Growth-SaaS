@@ -25,6 +25,7 @@
         <button class="sidebar__tab sidebar__tab--active" data-tab="chats" role="tab" aria-selected="true">แชท</button>
         <button class="sidebar__tab" data-tab="leads" role="tab" aria-selected="false">ลีด</button>
         <button class="sidebar__tab" data-tab="inbox" role="tab" aria-selected="false">กล่อง</button>
+        <button class="sidebar__tab" data-tab="facebook" role="tab" aria-selected="false">Facebook</button>
       </div>
 
       <!-- ── Conversations panel ────────────────────────────────────── -->
@@ -42,6 +43,17 @@
       <!-- ── Leads panel ────────────────────────────────────────────── -->
       <div id="leads-panel" class="sidebar__panel leads-panel">
         <div id="leads-list" class="leads-list">
+          <p class="leads-empty">กำลังโหลด...</p>
+        </div>
+      </div>
+
+      <!-- ── Facebook prospecting panel ───────────────────────────── -->
+      <div id="facebook-panel" class="sidebar__panel facebook-panel">
+        <div class="inbox-header">
+          <span>Facebook โปรสเปค</span>
+          <span id="facebook-status" class="inbox-status"></span>
+        </div>
+        <div id="facebook-list" class="facebook-list">
           <p class="leads-empty">กำลังโหลด...</p>
         </div>
       </div>

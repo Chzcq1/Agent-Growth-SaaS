@@ -49,6 +49,13 @@ class Settings(BaseSettings):
     chatwoot_account_id: str = ""
     chatwoot_webhook_secret: str = ""
 
+    # --- Facebook prospecting -------------------------------------------
+    facebook_enabled: bool = False
+    facebook_page_id: str = ""
+    facebook_page_access_token: str = ""
+    facebook_dm_hourly_limit: int = 20   # max DMs per rolling 60-min window
+    facebook_poll_interval_minutes: int = 5  # how often to scan for new comments
+
     # --- App ---------------------------------------------------------------
     admin_session_secret: str = "dev-only-change-me"
     environment: str = "development"

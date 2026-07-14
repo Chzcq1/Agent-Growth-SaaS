@@ -1206,6 +1206,28 @@ details[open] .approvals-toggle { transform: rotate(90deg); }
 }
 .takeover-btn:hover { border-color: var(--accent); color: var(--accent); }
 
+/* ── Facebook prospecting panel ─────────────────────────────────────────────── */
+.facebook-panel { display: none; flex-direction: column; }
+.sidebar__panel--active.facebook-panel { display: flex; }
+.facebook-list { overflow-y: auto; flex: 1; }
+
+.fb-lead-item { cursor: default; }
+.fb-lead__snippet {
+  font-size: 0.73rem;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin: 2px 0 4px;
+}
+.fb-lead__link {
+  font-size: 0.68rem;
+  color: #1877F2;
+  text-decoration: none;
+  margin-right: auto;
+}
+.fb-lead__link:hover { text-decoration: underline; }
+
 /* ── Custom confirm modal ────────────────────────────────────────────────────── */
 .vo-modal-overlay {
   display: none;

@@ -65,6 +65,9 @@ class Lead(Base):
     # ── Chatwoot link (migration 0009) ───────────────────────────────────────
     chatwoot_conversation_id: Mapped[str | None] = mapped_column(String(100))
     chatwoot_contact_id: Mapped[str | None] = mapped_column(String(100))
+    # ── Facebook prospecting (migration 0010) ────────────────────────────────
+    source: Mapped[str | None] = mapped_column(String(50))          # e.g. "facebook_comment"
+    facebook_comment_id: Mapped[str | None] = mapped_column(String(200))
     # ─────────────────────────────────────────────────────────────────────────
     pain_points: Mapped[dict | None] = mapped_column(JSON)
     last_contacted_date: Mapped[datetime | None] = mapped_column(DateTime)
