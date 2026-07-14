@@ -14,6 +14,7 @@ from app.agents.prompts import (
     CUSTOMER_SUCCESS_AGENT_USER_TEMPLATE,
     REWORK_FEEDBACK_TEMPLATE,
 )
+from app.customer_context import format_context_for_prompt
 from app.llm_client import LLMUnavailable, call_llm
 
 AGENT_NAME = "customer_success_agent"
@@ -30,8 +31,15 @@ def matches(text: str) -> bool:
     return any(k in lowered for k in KEYWORDS)
 
 
-async def run(db: Session, raw_text: str, feedback: str | None = None) -> dict:
-    user_prompt = CUSTOMER_SUCCESS_AGENT_USER_TEMPLATE.format(raw_text=raw_text)
+async def run(
+    db: Session,
+    raw_text: str,
+    feedback: str | None = None,
+    *,
+    customer_context: dict | None = None,
+) -> dict:
+    ctx_block = format_context_for_prompt(customer_context)
+    user_prompt = ctx_block + CUSTOMER_SUCCESS_AGENT_USER_TEMPLATE.format(raw_text=raw_text)
     if feedback:
         user_prompt += REWORK_FEEDBACK_TEMPLATE.format(feedback=feedback)
     try:

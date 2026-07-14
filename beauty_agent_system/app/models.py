@@ -29,6 +29,20 @@ class LeadStatus(str, enum.Enum):
     BLOCKED = "Blocked"
 
 
+class LeadStage(str, enum.Enum):
+    """Funnel stage for autonomous AI conversations (Task #5 / #6).
+
+    Stored as VARCHAR in Postgres (non-native enum) so alembic migrations
+    never need to CREATE/DROP a Postgres ENUM type.
+    """
+    COLD        = "cold"
+    INTERESTED  = "interested"
+    NEGOTIATING = "negotiating"
+    CLOSED      = "closed"
+    POST_SALE   = "post_sale"
+    CHURNED     = "churned"
+
+
 class Lead(Base):
     __tablename__ = "leads"
 
@@ -45,6 +59,11 @@ class Lead(Base):
         ),
         default=LeadStatus.NEW,
     )
+    # ── Funnel stage (added migration 0008) ──────────────────────────────────
+    # Stored as VARCHAR(50); Python validates against LeadStage enum.
+    stage: Mapped[str] = mapped_column(String(50), default="cold")
+    last_contacted_at: Mapped[datetime | None] = mapped_column(DateTime)
+    # ─────────────────────────────────────────────────────────────────────────
     pain_points: Mapped[dict | None] = mapped_column(JSON)
     last_contacted_date: Mapped[datetime | None] = mapped_column(DateTime)
     next_followup_date: Mapped[datetime | None] = mapped_column(DateTime)

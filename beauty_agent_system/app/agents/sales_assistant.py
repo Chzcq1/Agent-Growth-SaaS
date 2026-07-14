@@ -14,6 +14,7 @@ from app.agents.prompts import (
     SALES_ASSISTANT_SYSTEM_PROMPT,
     SALES_ASSISTANT_USER_TEMPLATE,
 )
+from app.customer_context import format_context_for_prompt
 from app.llm_client import LLMUnavailable, call_llm
 from app.research import get_verified_case_study
 
@@ -31,9 +32,16 @@ def matches(text: str) -> bool:
     return any(k in lowered for k in KEYWORDS)
 
 
-async def run(db: Session, raw_text: str, feedback: str | None = None) -> dict:
+async def run(
+    db: Session,
+    raw_text: str,
+    feedback: str | None = None,
+    *,
+    customer_context: dict | None = None,
+) -> dict:
     case_study = get_verified_case_study(db)
-    user_prompt = SALES_ASSISTANT_USER_TEMPLATE.format(
+    ctx_block = format_context_for_prompt(customer_context)
+    user_prompt = ctx_block + SALES_ASSISTANT_USER_TEMPLATE.format(
         raw_text=raw_text,
         case_study=case_study["text"] if case_study else "ไม่มี",
     )

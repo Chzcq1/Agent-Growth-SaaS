@@ -50,6 +50,7 @@ from app.agents.prompts import (
     SUPERVISOR_ROUTE_USER_TEMPLATE,
 )
 from app.business_context import AGENT_TASK_TH, CSC_GOAL_TH
+from app.customer_context import build_customer_context, touch_lead
 from app.llm_client import LLMUnavailable, call_llm
 from app.memory import memory_note as _memory_note
 from app.models import AgentFeedback, Conversation, OfficeRun, PendingApproval
@@ -68,16 +69,27 @@ AGENT_MODULES = {
 }
 
 
-async def _run_agent(name: str, db: Session, raw_text: str, *, feedback: str | None = None,
-                      image_urls: list[str] | None = None) -> dict:
-    """Thin dispatch wrapper: only general_assistant's `run()` accepts
-    image_urls, so this keeps the other 7 agents' signatures untouched."""
+async def _run_agent(
+    name: str,
+    db: Session,
+    raw_text: str,
+    *,
+    feedback: str | None = None,
+    image_urls: list[str] | None = None,
+    customer_context: dict | None = None,
+) -> dict:
+    """Thin dispatch wrapper that passes customer_context to agents that
+    support it (sales_assistant, customer_success_agent, general_assistant)
+    and image_urls only to general_assistant."""
     module = AGENT_MODULES[name]
     kwargs: dict = {}
     if feedback:
         kwargs["feedback"] = feedback
     if image_urls and getattr(module, "SUPPORTS_IMAGES", False):
         kwargs["image_urls"] = image_urls
+    # Pass customer context to agents whose run() accepts it
+    if customer_context and name in ("sales_assistant", "customer_success_agent", "general_assistant"):
+        kwargs["customer_context"] = customer_context
     return await module.run(db, raw_text, **kwargs)
 
 
@@ -424,15 +436,28 @@ AGENT_EMOJI = {
 }
 
 
-async def stream_run_office(db: Session, raw_text: str, *, conversation_id: int | None = None,
-                             image_urls: list[str] | None = None):
+async def stream_run_office(
+    db: Session,
+    raw_text: str,
+    *,
+    conversation_id: int | None = None,
+    image_urls: list[str] | None = None,
+    lead_id: int | None = None,
+):
     """Async generator that yields event dicts representing each stage of the
     Virtual Office pipeline.  The caller (SSE router) serialises them as
     `data: <json>\n\n` and pipes to the browser.  The OfficeRun DB record is
-    created here at the very end so run_id can be included in "final"."""
+    created here at the very end so run_id can be included in "final".
+
+    When lead_id is provided (e.g. from an incoming Chatwoot message or a
+    manually linked run), the supervisor builds a customer_context dict and
+    injects it into supporting agents so they don't start blind."""
 
     raw_text = (raw_text or "").strip()
     image_urls = image_urls or []
+
+    # ── Customer context (if a specific lead is linked to this run) ──────
+    customer_context = build_customer_context(db, lead_id) if lead_id else None
 
     # ── Stage 0: supervisor selects agents ──────────────────────────────
     yield {"type": "supervisor_thinking", "text": "กำลังอ่านและเลือก Agent ที่เหมาะสม..."}
@@ -486,7 +511,9 @@ async def stream_run_office(db: Session, raw_text: str, *, conversation_id: int 
 
     # Run non-GA agents concurrently (rate-limiter serialises internally)
     name_to_task = {
-        name: asyncio.create_task(_run_agent(name, db, raw_text, image_urls=image_urls))
+        name: asyncio.create_task(
+            _run_agent(name, db, raw_text, image_urls=image_urls, customer_context=customer_context)
+        )
         for name in other_agents
     }
     task_to_name = {v: k for k, v in name_to_task.items()}
@@ -525,7 +552,7 @@ async def stream_run_office(db: Session, raw_text: str, *, conversation_id: int 
         ga_result: dict = {}
         try:
             async for chunk, result in general_assistant.run_stream(
-                db, raw_text, image_urls=image_urls
+                db, raw_text, image_urls=image_urls, customer_context=customer_context
             ):
                 if chunk is not None:
                     yield {"type": "token", "text": chunk}
@@ -683,6 +710,10 @@ async def stream_run_office(db: Session, raw_text: str, *, conversation_id: int 
         if convo and convo.title == "แชทใหม่":
             convo.title = (raw_text or "รูปภาพที่แนบมา")[:60]
             db.commit()
+
+    # Bump last_contacted_at for linked lead so the Leads panel stays fresh
+    if lead_id:
+        touch_lead(db, lead_id)
 
     yield {
         "type": "final",

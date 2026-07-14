@@ -20,6 +20,7 @@ from app.agents.prompts import (
     GENERAL_ASSISTANT_USER_TEMPLATE,
     REWORK_FEEDBACK_TEMPLATE,
 )
+from app.customer_context import format_context_for_prompt
 from app.llm_client import LLMUnavailable, call_llm, call_llm_stream
 
 AGENT_NAME = "general_assistant"
@@ -56,8 +57,13 @@ async def run(
     raw_text: str,
     feedback: str | None = None,
     image_urls: list[str] | None = None,
+    *,
+    customer_context: dict | None = None,
 ) -> dict:
-    user_prompt = GENERAL_ASSISTANT_USER_TEMPLATE.format(raw_text=raw_text or "(ไม่มีข้อความ ดูจากรูปที่แนบมาแทน)")
+    ctx_block = format_context_for_prompt(customer_context)
+    user_prompt = ctx_block + GENERAL_ASSISTANT_USER_TEMPLATE.format(
+        raw_text=raw_text or "(ไม่มีข้อความ ดูจากรูปที่แนบมาแทน)"
+    )
     if feedback:
         user_prompt += REWORK_FEEDBACK_TEMPLATE.format(feedback=feedback)
 
@@ -119,6 +125,7 @@ async def run_stream(
     raw_text: str,
     *,
     image_urls: list[str] | None = None,
+    customer_context: dict | None = None,
 ):
     """Async generator — streams the plain-text answer token by token.
 
@@ -127,7 +134,8 @@ async def run_stream(
     The caller (supervisor) forwards chunk events to SSE and uses the final
     result dict to build the OfficeRun record.
     """
-    user_prompt = GENERAL_ASSISTANT_USER_TEMPLATE.format(
+    ctx_block = format_context_for_prompt(customer_context)
+    user_prompt = ctx_block + GENERAL_ASSISTANT_USER_TEMPLATE.format(
         raw_text=raw_text or "(ไม่มีข้อความ ดูจากรูปที่แนบมาแทน)"
     )
     data_urls = [u for u in (_to_data_url(p) for p in (image_urls or [])) if u]

@@ -20,7 +20,14 @@
           <span class="sidebar__new-chat-label">แชทใหม่</span>
         </button>
       </div>
-      <nav id="conversation-list" class="conversation-list" data-active="{{ conversation_id }}">
+      <!-- ── Sidebar tab bar ──────────────────────────────────────────── -->
+      <div class="sidebar__tabs" role="tablist">
+        <button class="sidebar__tab sidebar__tab--active" data-tab="chats" role="tab" aria-selected="true">แชท</button>
+        <button class="sidebar__tab" data-tab="leads" role="tab" aria-selected="false">ลีด</button>
+      </div>
+
+      <!-- ── Conversations panel ────────────────────────────────────── -->
+      <nav id="conversation-list" class="conversation-list sidebar__panel sidebar__panel--active" data-active="{{ conversation_id }}">
         {% for c in conversations %}
         <div class="conversation-item{% if c.id == conversation_id %} conversation-item--active{% endif %}" data-id="{{ c.id }}">
           <a href="/?conversation_id={{ c.id }}" class="conversation-item__label">{{ c.title }}</a>
@@ -30,6 +37,13 @@
         </div>
         {% endfor %}
       </nav>
+
+      <!-- ── Leads panel ────────────────────────────────────────────── -->
+      <div id="leads-panel" class="sidebar__panel leads-panel">
+        <div id="leads-list" class="leads-list">
+          <p class="leads-empty">กำลังโหลด...</p>
+        </div>
+      </div>
     </aside>
     {% endif %}
     <div class="shell__main">

@@ -22,8 +22,9 @@ from sqlalchemy.orm import Session
 
 from app.agents.graph import run_office_graph
 from app.agents.supervisor import stream_run_office
+from app.customer_context import STAGE_COLORS, STAGE_LABELS, update_lead_stage
 from app.database import get_db
-from app.models import AgentFeedback, Conversation, OfficeRun, PendingApproval
+from app.models import AgentFeedback, Conversation, Lead, LeadStage, OfficeRun, PendingApproval
 
 logger = logging.getLogger("beauty_agent_system.office")
 
@@ -189,12 +190,49 @@ async def upload_image(file: UploadFile, db: Session = Depends(get_db)):  # noqa
     return {"url": f"/static/uploads/{filename}"}
 
 
+@router.get("/leads")
+def list_leads(db: Session = Depends(get_db)):
+    """Return all leads with stage info for the sidebar Leads panel."""
+    leads = db.scalars(select(Lead).order_by(Lead.updated_at.desc())).all()
+    return [
+        {
+            "id":               lead.shop_id,
+            "shop_name":        lead.shop_name,
+            "stage":            lead.stage or "cold",
+            "stage_label":      STAGE_LABELS.get(lead.stage or "cold", lead.stage or "cold"),
+            "stage_color":      STAGE_COLORS.get(lead.stage or "cold", "#78716c"),
+            "facebook_url":     lead.facebook_url,
+            "line_id":          lead.line_id,
+            "last_contacted_at": (
+                lead.last_contacted_at.isoformat() if lead.last_contacted_at else None
+            ),
+            "status":           lead.status.value if lead.status else None,
+        }
+        for lead in leads
+    ]
+
+
+@router.patch("/leads/{lead_id}/stage")
+def update_stage(
+    lead_id: int,
+    stage: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    """Founder manually sets a lead's funnel stage from the sidebar."""
+    valid = {s.value for s in LeadStage}
+    if stage not in valid:
+        raise HTTPException(status_code=400, detail=f"invalid stage; valid values: {sorted(valid)}")
+    changed = update_lead_stage(db, lead_id, stage)
+    return {"ok": True, "changed": changed, "stage": stage, "stage_label": STAGE_LABELS.get(stage, stage)}
+
+
 @router.post("/run/stream")
 async def run_office_stream(
     request: Request,
     raw_text: str = Form(""),
     conversation_id: int = Form(...),
     image_urls: str = Form("[]"),
+    lead_id: int | None = Form(None),
     db: Session = Depends(get_db),
 ):
     """Server-Sent Events endpoint: streams each pipeline stage as JSON events
@@ -207,7 +245,10 @@ async def run_office_stream(
     async def event_generator():
         try:
             async for event in stream_run_office(
-                db, raw_text, conversation_id=conversation_id, image_urls=parsed_image_urls
+                db, raw_text,
+                conversation_id=conversation_id,
+                image_urls=parsed_image_urls,
+                lead_id=lead_id,
             ):
                 yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
         except Exception as exc:

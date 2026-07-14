@@ -109,6 +109,7 @@ function showConfirmModal(title, body, confirmLabel = "ยืนยัน") {
 const SIDEBAR_COLLAPSED_KEY = "vo_sidebar_collapsed";
 
 function initSidebar() {
+  initSidebarTabs();
   const sidebar = document.getElementById("sidebar");
   if (!sidebar) return; // pages without the sidebar context (none currently)
 
@@ -149,6 +150,108 @@ function initSidebar() {
       } catch (_) { /* ignore */ }
     });
   });
+}
+
+// ─── Sidebar tabs + Leads panel ───────────────────────────────────────────────
+const STAGE_OPTIONS = [
+  { value: "cold",        label: "ยังไม่เคยคุย" },
+  { value: "interested",  label: "สนใจ/กำลังพิจารณา" },
+  { value: "negotiating", label: "กำลังต่อรอง" },
+  { value: "closed",      label: "ปิดการขายแล้ว" },
+  { value: "post_sale",   label: "ดูแลหลังขาย" },
+  { value: "churned",     label: "เลิกใช้/หายไป" },
+];
+
+function initSidebarTabs() {
+  const tabs = document.querySelectorAll(".sidebar__tab");
+  const panels = document.querySelectorAll(".sidebar__panel");
+  if (!tabs.length) return;
+
+  tabs.forEach((tab) => {
+    tab.addEventListener("click", () => {
+      const target = tab.dataset.tab;
+      tabs.forEach((t) => {
+        t.classList.toggle("sidebar__tab--active", t === tab);
+        t.setAttribute("aria-selected", t === tab ? "true" : "false");
+      });
+      panels.forEach((p) => {
+        const isTarget = p.id === "leads-panel"
+          ? target === "leads"
+          : target === "chats";
+        p.classList.toggle("sidebar__panel--active", isTarget);
+      });
+      if (target === "leads") loadLeads();
+    });
+  });
+}
+
+async function loadLeads() {
+  const list = document.getElementById("leads-list");
+  if (!list) return;
+  try {
+    const resp = await fetch("/leads");
+    if (!resp.ok) throw new Error(resp.statusText);
+    const leads = await resp.json();
+    if (!leads.length) {
+      list.innerHTML = '<p class="leads-empty">ยังไม่มีลีดในระบบ</p>';
+      return;
+    }
+    list.innerHTML = "";
+    leads.forEach((lead) => list.appendChild(buildLeadItem(lead)));
+  } catch (e) {
+    list.innerHTML = `<p class="leads-empty">โหลดไม่ได้: ${e.message}</p>`;
+  }
+}
+
+function buildLeadItem(lead) {
+  const item = el_("div", "lead-item");
+  const name = el_("div", "lead-item__name");
+  name.textContent = lead.shop_name;
+
+  const footer = el_("div", "lead-item__footer");
+
+  // Stage badge (color-coded pill)
+  const badge = el_("span", "stage-badge");
+  badge.textContent = lead.stage_label;
+  badge.style.background = lead.stage_color || "#78716c";
+
+  // Stage dropdown for quick editing
+  const sel = document.createElement("select");
+  sel.className = "stage-select";
+  STAGE_OPTIONS.forEach(({ value, label }) => {
+    const opt = document.createElement("option");
+    opt.value = value;
+    opt.textContent = label;
+    if (value === lead.stage) opt.selected = true;
+    sel.appendChild(opt);
+  });
+  sel.addEventListener("change", async () => {
+    try {
+      const fd = new FormData();
+      fd.append("stage", sel.value);
+      const resp = await fetch(`/leads/${lead.id}/stage`, { method: "PATCH", body: fd });
+      const data = await resp.json();
+      if (data.ok) {
+        badge.textContent = data.stage_label;
+        // Update color by looking up from STAGE_OPTIONS mapping (color comes from server)
+        loadLeads(); // simple reload to sync colors
+      }
+    } catch (_) { /* ignore */ }
+  });
+
+  // Last contact date
+  const lastContact = el_("span", "lead-item__last-contact");
+  if (lead.last_contacted_at) {
+    const d = new Date(lead.last_contacted_at);
+    lastContact.textContent = d.toLocaleDateString("th-TH", { day: "numeric", month: "short" });
+  }
+
+  footer.appendChild(badge);
+  footer.appendChild(sel);
+  footer.appendChild(lastContact);
+  item.appendChild(name);
+  item.appendChild(footer);
+  return item;
 }
 
 // ─── Image attachments ─────────────────────────────────────────────────────────
