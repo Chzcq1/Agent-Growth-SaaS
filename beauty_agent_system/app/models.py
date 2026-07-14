@@ -183,6 +183,13 @@ class OfficeRun(Base):
     ai_actions: Mapped[list] = mapped_column(JSON, default=list)
     missing_info: Mapped[list] = mapped_column(JSON, default=list)
     approval_id: Mapped[int | None] = mapped_column(ForeignKey("pending_approvals.id"))
+    # ── Content Strategist structured output (migration 0012) ────────────────
+    content_plan: Mapped[list] = mapped_column(JSON, default=list)
+    content_ideas: Mapped[list] = mapped_column(JSON, default=list)
+    target_profile: Mapped[str | None] = mapped_column(Text)
+    pitch_timing: Mapped[str | None] = mapped_column(Text)
+    product_pitch: Mapped[str | None] = mapped_column(Text)
+    # ─────────────────────────────────────────────────────────────────────────
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     # Founder's own reaction to this run's output ("accepted"/"rejected" +
     # optional note) -- the raw signal fed back into future runs so the

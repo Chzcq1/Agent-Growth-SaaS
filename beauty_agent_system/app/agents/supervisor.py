@@ -701,6 +701,11 @@ async def stream_run_office(
         missing_info=missing_info,
         approval_id=approval_id,
         general_answer=general_answer,
+        content_plan=content_plan,
+        content_ideas=content_ideas,
+        target_profile=target_profile or None,
+        pitch_timing=pitch_timing or None,
+        product_pitch=product_pitch or None,
     )
     db.add(run)
     db.commit()

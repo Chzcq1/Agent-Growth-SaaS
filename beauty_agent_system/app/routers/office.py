@@ -141,6 +141,11 @@ def runs_recent(conversation_id: int | None = None, db: Session = Depends(get_db
             "missing_info": r.missing_info or [],
             "questions": r.questions or [],
             "team_notes": r.team_notes or [],
+            "content_plan": r.content_plan or [],
+            "content_ideas": r.content_ideas or [],
+            "target_profile": r.target_profile or "",
+            "pitch_timing": r.pitch_timing or "",
+            "product_pitch": r.product_pitch or "",
             "outcome": r.outcome,
             "founder_note": r.founder_note,
         }
