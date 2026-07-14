@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+{% block title %}Activity Feed — CSC{% endblock %}
+{% block content %}
+<style>
+.act-wrap { max-width: 980px; margin: 0 auto; padding: 28px 20px 60px; }
+
+/* ── Page header ── */
+.act-header { display: flex; align-items: center; gap: 16px; margin-bottom: 24px; }
+.act-header h1 { font-size: 1.25rem; font-weight: 700; margin: 0; }
+.act-header .act-date { font-size: 0.8rem; color: var(--muted); }
+.act-back { font-size: 0.82rem; color: var(--muted); text-decoration: none;
+            border: 1px solid var(--border); border-radius: 8px; padding: 5px 10px; }
+.act-back:hover { color: var(--fg); border-color: var(--fg); }
+
+/* ── Metric cards ── */
+.act-metrics { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; margin-bottom: 28px; }
+.act-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+            padding: 16px 18px; }
+.act-card__num { font-size: 2rem; font-weight: 700; line-height: 1; }
+.act-card__label { font-size: 0.72rem; color: var(--muted); margin-top: 4px; text-transform: uppercase; letter-spacing: .04em; }
+.act-card--signal .act-card__num { color: #16a34a; }
+.act-card--question .act-card__num { color: #2563eb; }
+.act-card--dm .act-card__num { color: #7c3aed; }
+.act-card--replied .act-card__num { color: #d97706; }
+
+/* ── Table ── */
+.act-table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 12px; }
+.act-table { width: 100%; border-collapse: collapse; font-size: 0.83rem; }
+.act-table thead th { background: var(--surface); color: var(--muted); font-weight: 600;
+                      font-size: 0.72rem; text-transform: uppercase; letter-spacing: .04em;
+                      padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--border); }
+.act-table tbody tr { border-bottom: 1px solid var(--border); }
+.act-table tbody tr:last-child { border-bottom: none; }
+.act-table tbody tr:hover { background: var(--hover, rgba(0,0,0,.02)); }
+.act-table td { padding: 10px 14px; vertical-align: top; }
+
+/* Platform badge */
+.plat { display: inline-flex; align-items: center; gap: 5px; font-size: 0.72rem;
+        font-weight: 600; padding: 2px 8px; border-radius: 20px; white-space: nowrap; }
+.plat--facebook { background: #dbeafe; color: #1d4ed8; }
+.plat--tiktok   { background: #fce7f3; color: #9d174d; }
+
+/* Classification badge */
+.badge { display: inline-block; font-size: 0.68rem; font-weight: 700; padding: 2px 7px;
+         border-radius: 20px; white-space: nowrap; text-transform: uppercase; letter-spacing: .03em; }
+.badge--buying_signal { background: #dcfce7; color: #15803d; }
+.badge--question       { background: #dbeafe; color: #1e40af; }
+.badge--noise          { background: #f3f4f6; color: #6b7280; }
+.badge--dm_sent        { background: #ede9fe; color: #6d28d9; margin-left: 4px; }
+.badge--dm_failed      { background: #fee2e2; color: #b91c1c; margin-left: 4px; }
+
+/* Text cells */
+.act-comment { color: var(--fg); max-width: 260px; }
+.act-reply   { color: var(--muted); max-width: 320px; font-style: italic; }
+.act-name    { font-weight: 600; white-space: nowrap; }
+.act-time    { color: var(--muted); white-space: nowrap; font-size: 0.75rem; }
+
+/* Empty state */
+.act-empty { padding: 60px 20px; text-align: center; color: var(--muted); }
+.act-empty p { margin: 8px 0 0; font-size: 0.85rem; }
+</style>
+
+<div class="act-wrap">
+
+  <div class="act-header">
+    <a href="/" class="act-back">← กลับ</a>
+    <h1>📬 ประวัติตอบกลับ AI</h1>
+    <span class="act-date">อัปเดตทุกครั้งที่โหลดหน้า</span>
+  </div>
+
+  <!-- ── Metrics ── -->
+  <div class="act-metrics">
+    <div class="act-card">
+      <div class="act-card__num">{{ metrics.total_today }}</div>
+      <div class="act-card__label">คอมเมนต์วันนี้</div>
+    </div>
+    <div class="act-card act-card--replied">
+      <div class="act-card__num">{{ metrics.replied }}</div>
+      <div class="act-card__label">ตอบกลับแล้ว</div>
+    </div>
+    <div class="act-card act-card--signal">
+      <div class="act-card__num">{{ metrics.buying_signals }}</div>
+      <div class="act-card__label">สนใจซื้อ</div>
+    </div>
+    <div class="act-card act-card--question">
+      <div class="act-card__num">{{ metrics.questions }}</div>
+      <div class="act-card__label">ถามข้อมูล</div>
+    </div>
+    <div class="act-card act-card--dm">
+      <div class="act-card__num">{{ metrics.dms_sent }}</div>
+      <div class="act-card__label">ส่ง DM แล้ว</div>
+    </div>
+  </div>
+
+  <!-- ── Activity table ── -->
+  {% if activities %}
+  <div class="act-table-wrap">
+    <table class="act-table">
+      <thead>
+        <tr>
+          <th>เวลา</th>
+          <th>ช่องทาง</th>
+          <th>ชื่อ</th>
+          <th>คอมเมนต์</th>
+          <th>บอทตอบ</th>
+          <th>ผล</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for a in activities %}
+        <tr>
+          <td class="act-time">
+            {% if a.created_at %}
+              {{ a.created_at.strftime('%d/%m %H:%M') }}
+            {% endif %}
+          </td>
+          <td>
+            <span class="plat plat--{{ a.platform }}">
+              {% if a.platform == 'facebook' %}📘 FB{% else %}🎵 TT{% endif %}
+            </span>
+          </td>
+          <td class="act-name">{{ a.commenter_name or '—' }}</td>
+          <td class="act-comment">
+            {% if a.comment_text %}
+              {{ a.comment_text[:180] }}{% if a.comment_text|length > 180 %}…{% endif %}
+            {% else %}—{% endif %}
+          </td>
+          <td class="act-reply">
+            {% if a.reply_text %}
+              {{ a.reply_text[:200] }}{% if a.reply_text|length > 200 %}…{% endif %}
+            {% else %}<span style="color:var(--muted);font-style:normal;">ไม่ตอบ</span>{% endif %}
+          </td>
+          <td>
+            <span class="badge badge--{{ a.classification }}">
+              {% if a.classification == 'buying_signal' %}สนใจซื้อ
+              {% elif a.classification == 'question' %}ถามข้อมูล
+              {% elif a.classification == 'noise' %}ข้อความทั่วไป
+              {% else %}{{ a.classification }}{% endif %}
+            </span>
+            {% if a.dm_outcome == 'sent' %}
+              <span class="badge badge--dm_sent">DM ✓</span>
+            {% elif a.dm_outcome == 'dm_failed' %}
+              <span class="badge badge--dm_failed">DM ✗</span>
+            {% elif a.dm_outcome == 'rate_limited' %}
+              <span class="badge badge--noise">DM จำกัด</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="act-empty">
+    <div style="font-size:2.5rem;">📭</div>
+    <strong>ยังไม่มีข้อมูล</strong>
+    <p>บอทยังไม่เคยสแกนหรือตอบกลับคอมเมนต์ใดเลย<br>
+       ตรวจสอบให้แน่ใจว่า Facebook/TikTok ถูก enable ใน config และ token ถูกต้อง</p>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

@@ -100,10 +100,21 @@ def _is_comment_processed(db: Session, comment_id: str) -> bool:
     return _get_cache(db, f"tt_comment:{comment_id}") is not None
 
 
-def _mark_comment_processed(db: Session, comment_id: str, classification: str) -> None:
+def _mark_comment_processed(
+    db: Session,
+    comment_id: str,
+    classification: str,
+    *,
+    commenter_name: str = "",
+    comment_text: str = "",
+    reply_text: str = "",
+) -> None:
     _set_cache(db, f"tt_comment:{comment_id}", {
         "classification": classification,
         "processed_at": datetime.now(timezone.utc).isoformat(),
+        "commenter_name": commenter_name,
+        "comment_text": comment_text[:300] if comment_text else "",
+        "reply_text": reply_text[:500] if reply_text else "",
     })
 
 
@@ -316,7 +327,9 @@ async def process_new_comments(db: Session) -> int:
                     break
 
                 if classification == "noise" or not comment_reply:
-                    _mark_comment_processed(db, comment_id, classification)
+                    _mark_comment_processed(db, comment_id, classification,
+                                            commenter_name=commenter_name,
+                                            comment_text=comment_text)
                     continue
 
                 # ── Post comment reply (required before marking processed) ────
@@ -356,7 +369,10 @@ async def process_new_comments(db: Session) -> int:
                 elif classification == "question":
                     processed += 1
 
-                _mark_comment_processed(db, comment_id, classification)
+                _mark_comment_processed(db, comment_id, classification,
+                                        commenter_name=commenter_name,
+                                        comment_text=comment_text,
+                                        reply_text=comment_reply or "")
 
             if stop_early or not has_more:
                 break
