@@ -312,6 +312,13 @@ async def process_new_comments(db: Session) -> int:
             commenter_name = sender.get("name") or "ลูกค้า"
             psid = sender.get("id") or ""
 
+            if psid and psid == get_settings().facebook_page_id:
+                # The Page replying to its own comment thread (e.g. our AI's
+                # own reply) shows up as a "comment" on the next scan. Skip it
+                # so we never re-classify or log our own reply as a lead.
+                _mark_comment_processed(db, comment_id, "noise")
+                continue
+
             result = await classify_and_generate(db, comment_text, commenter_name)
             classification = result["classification"]
             comment_reply = result["comment_reply"]
