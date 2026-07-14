@@ -15,3 +15,7 @@ description: Quirks found while testing/extending the beauty_agent_system FastAP
 - Local dev DB is SQLite auto-created via `Base.metadata.create_all()` (no Alembic in this environment since `NEON_DATABASE_URL` is unset). That only
   creates missing tables, not new columns on existing tables — after adding a column via Alembic migration, must also delete the local
   `_unconfigured.db` file and restart so create_all rebuilds the full current schema, or the dev server crashes/mismatches on the stale schema.
+- Facebook's "stream" filter on `{post_id}/comments` returns the Page's own reply-to-a-comment nested under the original, mixed flat into the same list on
+  a later scan. Don't rely solely on comparing `comment.from.id == facebook_page_id` to detect/skip our own replies — that config value can be stale or
+  the returned actor ID can differ. Instead, pre-mark the reply's own comment_id as processed immediately using the ID Facebook returns from
+  `post_comment_reply()`, right when we post it — that's ID-exact and doesn't depend on any sender-identity comparison.

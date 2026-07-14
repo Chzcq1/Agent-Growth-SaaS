@@ -354,8 +354,17 @@ async def process_new_comments(db: Session) -> int:
 
             # ── Public reply (required before marking processed) ──────────────
             try:
-                await facebook_client.post_comment_reply(comment_id, comment_reply)
+                reply_result = await facebook_client.post_comment_reply(comment_id, comment_reply)
                 logger.info("Replied to comment %s", comment_id)
+                # Facebook returns the new reply's own comment_id. Pre-mark it
+                # processed immediately so a later scan never re-fetches our
+                # own reply as if it were a fresh inbound comment (it shows up
+                # nested under the original comment via the "stream" filter).
+                # This is more reliable than comparing sender IDs, which can
+                # silently fail to match if FACEBOOK_PAGE_ID is stale/wrong.
+                reply_comment_id = (reply_result or {}).get("id")
+                if reply_comment_id:
+                    _mark_comment_processed(db, reply_comment_id, "own_reply")
             except Exception as exc:  # noqa: BLE001
                 # Transient failure — leave comment unprocessed so next scan
                 # retries the full action (reply + DM).
