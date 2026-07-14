@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+{% block title %}ตรวจสอบโควต้า API — Virtual Office CSC{% endblock %}
+
+{% block content %}
+<div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:6px;">
+  <div>
+    <h1 style="margin:0 0 4px;">ตรวจสอบโควต้า API</h1>
+    <p class="subtitle">GitHub Models (gpt-4o-mini) · อัปเดต: {{ now.strftime('%d/%m/%Y %H:%M') }} UTC</p>
+  </div>
+  <a href="/" class="btn btn--primary" style="text-decoration:none;">← กลับ Virtual Office</a>
+</div>
+
+<!-- ── Sleep-mode banner ──────────────────────────────────────────────── -->
+{% if sleep_state.sleeping %}
+<div class="briefing-card briefing-card--attention" style="margin-bottom:24px;">
+  <strong>⚠️ Bot กำลัง Sleep — ไม่สามารถส่ง API ได้ตอนนี้</strong>
+  <p style="margin:8px 0 12px; font-size:0.9rem;">
+    ได้รับ 429 Rate Limited จาก GitHub Models<br>
+    จะตื่นอัตโนมัติเมื่อ: <strong>{{ sleep_state.wake_at.strftime('%d/%m/%Y %H:%M:%S') }} UTC</strong><br>
+    <span style="color:var(--muted); font-size:0.85rem;">{{ sleep_state.reason or '' }}</span>
+  </p>
+  <form method="post" action="/usage/wake" style="display:inline;">
+    <button type="submit" class="btn btn--danger" onclick="return confirm('ปลุก bot ทันทีโดยไม่รอ backoff หรือไม่? ถ้า GitHub Models ยังล็อกอยู่จะโดน 429 อีกทันที')">
+      ปลุก Bot ตอนนี้เลย (ยกเลิก sleep mode)
+    </button>
+  </form>
+</div>
+{% else %}
+<div class="briefing-card" style="margin-bottom:24px; border-color:var(--success);">
+  <strong style="color:var(--success);">✓ Bot ทำงานปกติ — ไม่ได้อยู่ใน sleep mode</strong>
+</div>
+{% endif %}
+
+<!-- ── Today summary ──────────────────────────────────────────────────── -->
+<h2 style="margin-top:0;">วันนี้</h2>
+<div class="stat-grid" style="margin-bottom:32px;">
+  <div class="stat-card {% if today.rate_limited_today > 0 %}stat-card--warn{% else %}stat-card--ok{% endif %}">
+    <span class="stat-label">Request ทั้งหมด</span>
+    <span class="stat-value">{{ today.total_requests_today }}</span>
+    <span class="stat-detail">จำนวนครั้งที่เรียก LLM วันนี้</span>
+  </div>
+  <div class="stat-card {% if today.rate_limited_today > 0 %}stat-card--warn{% endif %}">
+    <span class="stat-label">Rate Limited (429)</span>
+    <span class="stat-value" style="color:var(--warn);">{{ today.rate_limited_today }}</span>
+    <span class="stat-detail">ครั้งที่ถูก GitHub Models บล็อก</span>
+  </div>
+  <div class="stat-card {% if today.errors_today > 0 %}stat-card--warn{% endif %}">
+    <span class="stat-label">Errors</span>
+    <span class="stat-value" style="color:var(--danger);">{{ today.errors_today }}</span>
+    <span class="stat-detail">ครั้งที่เกิด error อื่นๆ</span>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">Tokens วันนี้</span>
+    <span class="stat-value">{{ "{:,}".format(tokens_today) }}</span>
+    <span class="stat-detail">รวม tokens ที่ใช้ไปวันนี้</span>
+  </div>
+</div>
+
+<!-- ── Tip: ทำไม request ถึงหนัก ─────────────────────────────────────── -->
+<div class="update-card" style="margin-bottom:28px; background:#f6f2ea; border-color:#e0d6c8;">
+  <p style="margin:0; font-size:0.88rem; color:var(--muted);">
+    <strong style="color:var(--ink);">💡 ทำไม request ถึง "หนัก"?</strong><br>
+    แต่ละครั้งที่ paste ข้อความ Supervisor จะรัน agent 0–6 ตัวพร้อมกัน — แต่ละตัวส่ง request แยกกัน
+    พร้อม BUSINESS_CONTEXT ที่ยาวใน system prompt ทุกครั้ง ดังนั้น 1 submission อาจใช้ได้ถึง 6 request
+    และ tokens รวมหลายร้อย KB ต่อครั้ง<br>
+    <strong>วิธีลดโควต้า:</strong> ลด MAX_REQUESTS_PER_MINUTE และ MAX_CONCURRENT_REQUESTS ใน Secrets
+    หรือสร้าง GitHub Token ใหม่ที่ยังไม่ถูก rate limit
+  </p>
+</div>
+
+<!-- ── Per-agent (7 วัน) ──────────────────────────────────────────────── -->
+<h2>แยกตาม Agent (7 วันล่าสุด)</h2>
+{% if agent_rows %}
+<div style="overflow-x:auto; margin-bottom:32px;">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Agent</th>
+        <th>สำเร็จ</th>
+        <th>Rate Limited</th>
+        <th>Error</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% set ns = namespace(agents={}) %}
+      {% for row in agent_rows %}
+        {% if row.agent_name not in ns.agents %}
+          {% set _ = ns.agents.update({row.agent_name: {'success':0,'rate_limited':0,'error':0}}) %}
+        {% endif %}
+        {% if row.status == 'success' %}
+          {% set _ = ns.agents[row.agent_name].update({'success': row.cnt}) %}
+        {% elif row.status == 'rate_limited' %}
+          {% set _ = ns.agents[row.agent_name].update({'rate_limited': row.cnt}) %}
+        {% elif row.status == 'error' %}
+          {% set _ = ns.agents[row.agent_name].update({'error': row.cnt}) %}
+        {% endif %}
+      {% endfor %}
+      {% for agent_name, counts in ns.agents.items() %}
+      <tr>
+        <td><code style="font-size:0.82rem;">{{ agent_name or '(ไม่ระบุ)' }}</code></td>
+        <td style="color:var(--success);">{{ counts.success }}</td>
+        <td style="color:var(--warn);">{{ counts.rate_limited }}</td>
+        <td style="color:var(--danger);">{{ counts.error }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p class="subtitle">ยังไม่มีข้อมูล 7 วันล่าสุด</p>
+{% endif %}
+
+<!-- ── Recent log ─────────────────────────────────────────────────────── -->
+<div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+  <h2 style="margin-bottom:0;">Log ล่าสุด (60 รายการ)</h2>
+  <button onclick="location.reload()" class="btn btn--small btn--primary" style="margin-bottom:4px;">รีเฟรช</button>
+</div>
+{% if recent_logs %}
+<div style="overflow-x:auto; margin-bottom:32px;">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>เวลา (UTC)</th>
+        <th>Agent</th>
+        <th>สถานะ</th>
+        <th>Tokens</th>
+        <th>รายละเอียด</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for log in recent_logs %}
+      <tr>
+        <td style="white-space:nowrap; font-size:0.8rem; color:var(--muted);">{{ log.created_at.strftime('%d/%m %H:%M:%S') if log.created_at else '-' }}</td>
+        <td style="font-size:0.82rem;"><code>{{ log.agent_name or '-' }}</code></td>
+        <td>
+          {% if log.status == 'success' %}
+            <span class="status-pill status-pill--trial" style="background:#e4f0e9;color:var(--success);">✓ success</span>
+          {% elif log.status == 'rate_limited' %}
+            <span class="status-pill" style="background:#fbeecb;color:var(--warn);">⏸ rate limited</span>
+          {% elif log.status == 'error' %}
+            <span class="status-pill status-pill--followup_1">✗ error</span>
+          {% else %}
+            <span class="status-pill">{{ log.status or '-' }}</span>
+          {% endif %}
+        </td>
+        <td style="font-size:0.85rem;">{{ log.tokens_used if log.tokens_used else '-' }}</td>
+        <td style="font-size:0.78rem; color:var(--muted); max-width:260px; word-break:break-all;">{{ (log.detail or '')[:120] }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty-state">ยังไม่มี log การใช้งาน — จะปรากฏหลังจากใช้งาน Virtual Office ครั้งแรก</div>
+{% endif %}
+
+<!-- ── คำแนะนำสร้าง Token ใหม่ ─────────────────────────────────────── -->
+<h2>สร้าง GitHub Token ใหม่ (ถ้าโควต้าหมด)</h2>
+<div class="update-card" style="margin-bottom:12px;">
+  <ol style="margin:0; padding-left:20px; line-height:2; font-size:0.9rem;">
+    <li>ไปที่ <a href="https://github.com/settings/tokens" target="_blank" rel="noopener">github.com/settings/tokens</a></li>
+    <li>กด <strong>Generate new token → Fine-grained tokens</strong></li>
+    <li>ตั้งชื่อใดก็ได้ เช่น <code>csc-virtual-office</code></li>
+    <li>ใต้ <em>Permissions</em> เลือก <strong>Models → Read-only</strong></li>
+    <li>คัดลอก token แล้วนำไปอัปเดต Secret ชื่อ <code>GITHUB_MODELS_TOKEN</code> บน Render</li>
+    <li>Restart service บน Render เพื่อใช้ token ใหม่</li>
+  </ol>
+  <p style="margin:12px 0 0; font-size:0.85rem; color:var(--muted);">
+    โควต้าฟรีของ GitHub Models รีเซ็ตทุกวัน ถ้าสร้าง token ใหม่แต่ยังโดน 429
+    แสดงว่าโควต้ารายวันของ account นั้นหมดแล้ว ต้องรอถึงวันถัดไป
+    หรือใช้ account GitHub คนละตัว
+  </p>
+</div>
+{% endblock %}

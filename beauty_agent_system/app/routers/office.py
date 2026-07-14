@@ -24,7 +24,8 @@ from app.agents.graph import run_office_graph
 from app.agents.supervisor import stream_run_office
 from app.customer_context import STAGE_COLORS, STAGE_LABELS, update_lead_stage
 from app.database import get_db
-from app.models import AgentFeedback, Conversation, Lead, LeadStage, OfficeRun, PendingApproval
+from app.models import AgentFeedback, ApiUsageLog, Conversation, Lead, LeadStage, OfficeRun, PendingApproval, SystemState
+from app.rate_limiter import SLEEP_STATE_KEY, rate_limiter
 
 logger = logging.getLogger("beauty_agent_system.office")
 
@@ -370,3 +371,95 @@ def edit_and_approve(approval_id: int, edited_message: str = Form(...), db: Sess
     db.add(AgentFeedback(approval_id=approval.id, outcome="sent", founder_note="edited before use"))
     db.commit()
     return RedirectResponse(url="/", status_code=303)
+
+
+# ---------------------------------------------------------------------------
+# Usage / quota monitoring page
+# ---------------------------------------------------------------------------
+
+@router.get("/usage", response_class=HTMLResponse)
+def usage_page(request: Request, db: Session = Depends(get_db)):
+    """Dashboard showing GitHub Models API quota, sleep state, and recent logs."""
+    from sqlalchemy import func, select
+    from datetime import date
+
+    sleep_state = rate_limiter.get_sleep_state(db)
+    today_quota = rate_limiter.estimate_quota_used_today(db)
+
+    # Last 7 days daily breakdown
+    from sqlalchemy import cast, Date
+    daily_rows = db.execute(
+        select(
+            cast(ApiUsageLog.created_at, Date).label("day"),
+            ApiUsageLog.status,
+            func.count(ApiUsageLog.id).label("cnt"),
+        )
+        .group_by("day", ApiUsageLog.status)
+        .order_by("day")
+    ).all()
+
+    # Per-agent breakdown (all time, last 7 days)
+    from datetime import timedelta
+    week_ago = datetime.now(timezone.utc) - timedelta(days=7)
+    agent_rows = db.execute(
+        select(
+            ApiUsageLog.agent_name,
+            ApiUsageLog.status,
+            func.count(ApiUsageLog.id).label("cnt"),
+        )
+        .where(ApiUsageLog.created_at >= week_ago)
+        .group_by(ApiUsageLog.agent_name, ApiUsageLog.status)
+        .order_by(ApiUsageLog.agent_name)
+    ).all()
+
+    # Recent log entries (last 60)
+    recent_logs = db.scalars(
+        select(ApiUsageLog).order_by(ApiUsageLog.created_at.desc()).limit(60)
+    ).all()
+
+    # Token totals today
+    tokens_today = db.scalar(
+        select(func.sum(ApiUsageLog.tokens_used)).where(
+            ApiUsageLog.created_at >= datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        )
+    ) or 0
+
+    return templates.TemplateResponse(
+        request,
+        "usage.html",
+        {
+            "sleep_state": sleep_state,
+            "today": today_quota,
+            "tokens_today": tokens_today,
+            "daily_rows": daily_rows,
+            "agent_rows": agent_rows,
+            "recent_logs": recent_logs,
+            "now": datetime.now(timezone.utc),
+        },
+    )
+
+
+@router.post("/usage/wake")
+def wake_bot(db: Session = Depends(get_db)):
+    """Clear sleep mode immediately so the bot can make LLM calls again."""
+    row = db.get(SystemState, SLEEP_STATE_KEY)
+    if row:
+        db.delete(row)
+        db.commit()
+    logger.info("Sleep mode cleared manually via /usage/wake")
+    return RedirectResponse(url="/usage", status_code=303)
+
+
+@router.get("/usage/stats")
+def usage_stats_api(db: Session = Depends(get_db)):
+    """JSON endpoint for live-refresh of the usage widget without a full page reload."""
+    sleep_state = rate_limiter.get_sleep_state(db)
+    today = rate_limiter.estimate_quota_used_today(db)
+    return {
+        "sleep_state": {
+            "sleeping": sleep_state["sleeping"],
+            "wake_at": sleep_state["wake_at"].isoformat() if sleep_state.get("wake_at") else None,
+            "reason": sleep_state.get("reason"),
+        },
+        **today,
+    }
