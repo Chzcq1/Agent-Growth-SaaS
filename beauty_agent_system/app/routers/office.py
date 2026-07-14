@@ -78,6 +78,14 @@ def _conversation_list(db: Session) -> list[dict]:
     ]
 
 
+@router.get("/privacy", response_class=HTMLResponse)
+def privacy_policy(request: Request):
+    from app.config import get_settings
+    settings = get_settings()
+    contact_email = settings.admin_contact_email if hasattr(settings, "admin_contact_email") else "cheanc74q@gmail.com"
+    return templates.TemplateResponse(request, "privacy.html", {"contact_email": contact_email})
+
+
 @router.get("/", response_class=HTMLResponse)
 def office_home(request: Request, conversation_id: int | None = None, db: Session = Depends(get_db)):
     convo = db.get(Conversation, conversation_id) if conversation_id else None

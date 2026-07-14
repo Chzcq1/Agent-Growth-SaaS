@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}นโยบายความเป็นส่วนตัว — CSC{% endblock %}
+{% block content %}
+<div style="max-width:680px;margin:48px auto;padding:0 24px 64px;font-family:inherit;line-height:1.7;color:#1c1917;">
+  <h1 style="font-size:1.6rem;font-weight:700;margin-bottom:4px;">นโยบายความเป็นส่วนตัว</h1>
+  <p style="color:#78716c;font-size:.9rem;margin-bottom:32px;">CSC (Creative Salon Connect) — มีผลบังคับใช้ตั้งแต่ 15 กรกฎาคม 2569</p>
+
+  <h2 style="font-size:1.1rem;font-weight:600;margin-top:28px;">1. ข้อมูลที่เราเก็บรวบรวม</h2>
+  <p>เมื่อคุณติดต่อ CSC ผ่านทาง Facebook Page หรือ Messenger เราอาจเก็บข้อมูลต่อไปนี้:</p>
+  <ul style="padding-left:20px;">
+    <li>ชื่อ Facebook ของคุณ</li>
+    <li>ข้อความที่คุณส่งมา</li>
+    <li>Page-Scoped ID (PSID) ที่ Facebook กำหนดให้สำหรับการสื่อสารกับ Page นี้</li>
+  </ul>
+
+  <h2 style="font-size:1.1rem;font-weight:600;margin-top:28px;">2. วัตถุประสงค์การใช้ข้อมูล</h2>
+  <p>ข้อมูลที่เก็บรวบรวมถูกใช้เพื่อ:</p>
+  <ul style="padding-left:20px;">
+    <li>ตอบคำถามและให้ข้อมูลเกี่ยวกับบริการ CSC</li>
+    <li>ปรับปรุงคุณภาพการตอบสนองของระบบ AI</li>
+    <li>ติดตามผลและให้บริการหลังการขาย</li>
+  </ul>
+
+  <h2 style="font-size:1.1rem;font-weight:600;margin-top:28px;">3. การแบ่งปันข้อมูล</h2>
+  <p>CSC ไม่ขาย ไม่เช่า และไม่เปิดเผยข้อมูลส่วนตัวของคุณให้แก่บุคคลภายนอก ยกเว้นในกรณีที่กฎหมายกำหนด</p>
+
+  <h2 style="font-size:1.1rem;font-weight:600;margin-top:28px;">4. การเก็บรักษาข้อมูล</h2>
+  <p>เราเก็บข้อมูลการสนทนาไว้ไม่เกิน 90 วัน หลังจากนั้นจะถูกลบออกจากระบบโดยอัตโนมัติ</p>
+
+  <h2 style="font-size:1.1rem;font-weight:600;margin-top:28px;">5. สิทธิ์ของคุณ</h2>
+  <p>คุณมีสิทธิ์ขอดู แก้ไข หรือลบข้อมูลของคุณได้ทุกเมื่อ โดยติดต่อมาที่อีเมล <strong>{{ contact_email }}</strong></p>
+
+  <h2 style="font-size:1.1rem;font-weight:600;margin-top:28px;">6. ติดต่อเรา</h2>
+  <p>หากมีคำถามเกี่ยวกับนโยบายนี้ ติดต่อได้ที่:<br>
+  อีเมล: <strong>{{ contact_email }}</strong></p>
+
+  <hr style="border:none;border-top:1px solid #e7e5e4;margin:40px 0 24px;">
+  <p style="font-size:.82rem;color:#a8a29e;">นโยบายนี้อาจได้รับการปรับปรุงเป็นครั้งคราว การเปลี่ยนแปลงใดๆ จะประกาศบนหน้านี้</p>
+</div>
+{% endblock %}
