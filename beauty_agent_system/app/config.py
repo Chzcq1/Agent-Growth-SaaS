@@ -49,6 +49,14 @@ class Settings(BaseSettings):
     chatwoot_account_id: str = ""
     chatwoot_webhook_secret: str = ""
 
+    # --- TikTok prospecting ---------------------------------------------
+    tiktok_enabled: bool = False
+    tiktok_client_key: str = ""
+    tiktok_client_secret: str = ""
+    tiktok_access_token: str = ""       # initial token; refreshed via SystemState
+    tiktok_refresh_token: str = ""      # stored in Replit Secrets; refreshed in-app
+    tiktok_poll_interval_minutes: int = 10  # how often to scan for new comments
+
     # --- Facebook prospecting -------------------------------------------
     facebook_enabled: bool = False
     facebook_page_id: str = ""

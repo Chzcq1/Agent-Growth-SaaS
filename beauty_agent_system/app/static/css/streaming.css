@@ -1206,6 +1206,30 @@ details[open] .approvals-toggle { transform: rotate(90deg); }
 }
 .takeover-btn:hover { border-color: var(--accent); color: var(--accent); }
 
+/* ── TikTok prospecting panel ───────────────────────────────────────────────── */
+.tiktok-panel { display: none; flex-direction: column; }
+.sidebar__panel--active.tiktok-panel { display: flex; }
+.tiktok-list { overflow-y: auto; flex: 1; }
+
+.tt-lead-item { cursor: default; }
+.tt-lead__link {
+  font-size: 0.68rem;
+  color: #010101;
+  text-decoration: none;
+  margin-right: auto;
+}
+.tt-lead__link:hover { text-decoration: underline; }
+.tt-merged-tag {
+  font-size: 0.58rem;
+  font-weight: 600;
+  background: #e879f9;
+  color: #fff;
+  border-radius: 999px;
+  padding: 1px 5px;
+  letter-spacing: 0.02em;
+  margin-left: 2px;
+}
+
 /* ── Facebook prospecting panel ─────────────────────────────────────────────── */
 .facebook-panel { display: none; flex-direction: column; }
 .sidebar__panel--active.facebook-panel { display: flex; }

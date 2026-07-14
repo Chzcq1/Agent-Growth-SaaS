@@ -167,6 +167,7 @@ const PANEL_MAP = {
   leads:    "leads-panel",
   inbox:    "inbox-panel",
   facebook: "facebook-panel",
+  tiktok:   "tiktok-panel",
 };
 
 let _inboxPollTimer = null;
@@ -188,6 +189,7 @@ function initSidebarTabs() {
       });
       if (target === "leads") loadLeads();
       if (target === "facebook") loadFacebookLeads();
+      if (target === "tiktok") loadTikTokLeads();
       if (target === "inbox") {
         loadInbox();
         startInboxPolling();
@@ -398,6 +400,75 @@ function buildFacebookLeadItem(lead) {
     link.rel = "noopener";
     link.className = "fb-lead__link";
     link.textContent = "ดูโปรไฟล์";
+    footer.appendChild(link);
+  }
+  const timeEl = el_("span", "lead-item__last-contact");
+  if (lead.created_at) {
+    const d = new Date(lead.created_at);
+    timeEl.textContent = d.toLocaleDateString("th-TH", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  }
+  footer.appendChild(timeEl);
+  item.appendChild(footer);
+  return item;
+}
+
+// ─── TikTok prospecting log ────────────────────────────────────────────────────
+async function loadTikTokLeads() {
+  const list = document.getElementById("tiktok-list");
+  const status = document.getElementById("tiktok-status");
+  if (!list) return;
+  try {
+    const resp = await fetch("/tiktok/leads");
+    if (!resp.ok) throw new Error(resp.statusText);
+    const leads = await resp.json();
+    if (!leads.length) {
+      list.innerHTML = '<p class="leads-empty">ยังไม่มีลีดจาก TikTok\n(เปิดใช้งาน TIKTOK_ENABLED=true)</p>';
+      if (status) status.textContent = "ว่าง";
+      return;
+    }
+    if (status) status.textContent = `${leads.length} คน`;
+    list.innerHTML = "";
+    leads.forEach((lead) => list.appendChild(buildTikTokLeadItem(lead)));
+  } catch (e) {
+    list.innerHTML = `<p class="leads-empty">โหลดไม่ได้: ${e.message}</p>`;
+  }
+}
+
+function buildTikTokLeadItem(lead) {
+  const item = el_("div", "lead-item tt-lead-item");
+
+  // Name + stage badge + merged indicator
+  const name = el_("div", "lead-item__name");
+  name.textContent = lead.shop_name;
+  const badge = el_("span", "stage-badge");
+  badge.textContent = lead.stage_label;
+  badge.style.background = lead.stage_color || "#010101";
+  name.appendChild(badge);
+  if (lead.merged) {
+    const mergedTag = el_("span", "tt-merged-tag");
+    mergedTag.textContent = "merged";
+    name.appendChild(mergedTag);
+  }
+
+  // Comment snippet
+  if (lead.comment_snippet) {
+    const snippet = el_("div", "fb-lead__snippet");
+    snippet.textContent = `💬 "${lead.comment_snippet}"`;
+    item.appendChild(name);
+    item.appendChild(snippet);
+  } else {
+    item.appendChild(name);
+  }
+
+  // Footer: video link + time
+  const footer = el_("div", "lead-item__footer");
+  if (lead.tiktok_video_url) {
+    const link = document.createElement("a");
+    link.href = lead.tiktok_video_url;
+    link.target = "_blank";
+    link.rel = "noopener";
+    link.className = "tt-lead__link";
+    link.textContent = "ดูวิดีโอ";
     footer.appendChild(link);
   }
   const timeEl = el_("span", "lead-item__last-contact");

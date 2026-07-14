@@ -26,6 +26,7 @@
         <button class="sidebar__tab" data-tab="leads" role="tab" aria-selected="false">ลีด</button>
         <button class="sidebar__tab" data-tab="inbox" role="tab" aria-selected="false">กล่อง</button>
         <button class="sidebar__tab" data-tab="facebook" role="tab" aria-selected="false">Facebook</button>
+        <button class="sidebar__tab" data-tab="tiktok" role="tab" aria-selected="false">TikTok</button>
       </div>
 
       <!-- ── Conversations panel ────────────────────────────────────── -->
@@ -43,6 +44,17 @@
       <!-- ── Leads panel ────────────────────────────────────────────── -->
       <div id="leads-panel" class="sidebar__panel leads-panel">
         <div id="leads-list" class="leads-list">
+          <p class="leads-empty">กำลังโหลด...</p>
+        </div>
+      </div>
+
+      <!-- ── TikTok prospecting panel ──────────────────────────────── -->
+      <div id="tiktok-panel" class="sidebar__panel tiktok-panel">
+        <div class="inbox-header">
+          <span>TikTok โปรสเปค</span>
+          <span id="tiktok-status" class="inbox-status"></span>
+        </div>
+        <div id="tiktok-list" class="tiktok-list">
           <p class="leads-empty">กำลังโหลด...</p>
         </div>
       </div>

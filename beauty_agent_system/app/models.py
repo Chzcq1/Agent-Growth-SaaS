@@ -68,6 +68,9 @@ class Lead(Base):
     # ── Facebook prospecting (migration 0010) ────────────────────────────────
     source: Mapped[str | None] = mapped_column(String(50))          # e.g. "facebook_comment"
     facebook_comment_id: Mapped[str | None] = mapped_column(String(200))
+    # ── TikTok prospecting (migration 0011) ──────────────────────────────────
+    tiktok_comment_id: Mapped[str | None] = mapped_column(String(200))
+    tiktok_video_id: Mapped[str | None] = mapped_column(String(200))
     # ─────────────────────────────────────────────────────────────────────────
     pain_points: Mapped[dict | None] = mapped_column(JSON)
     last_contacted_date: Mapped[datetime | None] = mapped_column(DateTime)
