@@ -59,10 +59,12 @@ class Lead(Base):
         ),
         default=LeadStatus.NEW,
     )
-    # ── Funnel stage (added migration 0008) ──────────────────────────────────
-    # Stored as VARCHAR(50); Python validates against LeadStage enum.
+    # ── Funnel stage (migration 0008) ────────────────────────────────────────
     stage: Mapped[str] = mapped_column(String(50), default="cold")
     last_contacted_at: Mapped[datetime | None] = mapped_column(DateTime)
+    # ── Chatwoot link (migration 0009) ───────────────────────────────────────
+    chatwoot_conversation_id: Mapped[str | None] = mapped_column(String(100))
+    chatwoot_contact_id: Mapped[str | None] = mapped_column(String(100))
     # ─────────────────────────────────────────────────────────────────────────
     pain_points: Mapped[dict | None] = mapped_column(JSON)
     last_contacted_date: Mapped[datetime | None] = mapped_column(DateTime)

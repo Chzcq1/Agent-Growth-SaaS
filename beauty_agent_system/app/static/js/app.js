@@ -162,9 +162,16 @@ const STAGE_OPTIONS = [
   { value: "churned",     label: "เลิกใช้/หายไป" },
 ];
 
+const PANEL_MAP = {
+  chats:  "conversation-list",
+  leads:  "leads-panel",
+  inbox:  "inbox-panel",
+};
+
+let _inboxPollTimer = null;
+
 function initSidebarTabs() {
   const tabs = document.querySelectorAll(".sidebar__tab");
-  const panels = document.querySelectorAll(".sidebar__panel");
   if (!tabs.length) return;
 
   tabs.forEach((tab) => {
@@ -174,15 +181,98 @@ function initSidebarTabs() {
         t.classList.toggle("sidebar__tab--active", t === tab);
         t.setAttribute("aria-selected", t === tab ? "true" : "false");
       });
-      panels.forEach((p) => {
-        const isTarget = p.id === "leads-panel"
-          ? target === "leads"
-          : target === "chats";
-        p.classList.toggle("sidebar__panel--active", isTarget);
+      Object.entries(PANEL_MAP).forEach(([key, panelId]) => {
+        const panel = document.getElementById(panelId);
+        if (panel) panel.classList.toggle("sidebar__panel--active", key === target);
       });
       if (target === "leads") loadLeads();
+      if (target === "inbox") {
+        loadInbox();
+        startInboxPolling();
+      } else {
+        stopInboxPolling();
+      }
     });
   });
+}
+
+// ─── Chatwoot inbox live feed ──────────────────────────────────────────────────
+async function loadInbox() {
+  const list = document.getElementById("inbox-list");
+  const status = document.getElementById("inbox-status");
+  if (!list) return;
+  try {
+    const resp = await fetch("/chatwoot/conversations/active");
+    if (!resp.ok) throw new Error(resp.statusText);
+    const convs = await resp.json();
+    if (status) status.textContent = `${convs.length} รายการ`;
+    if (!convs.length) {
+      list.innerHTML = '<p class="leads-empty">ยังไม่มีบทสนทนาที่ AI ดูแล</p>';
+      return;
+    }
+    list.innerHTML = "";
+    convs.forEach((c) => list.appendChild(buildInboxItem(c)));
+  } catch (e) {
+    if (list) list.innerHTML = `<p class="leads-empty">โหลดไม่ได้: ${e.message}</p>`;
+  }
+}
+
+function startInboxPolling() {
+  if (_inboxPollTimer) return;
+  _inboxPollTimer = setInterval(loadInbox, 10_000);
+}
+
+function stopInboxPolling() {
+  if (_inboxPollTimer) { clearInterval(_inboxPollTimer); _inboxPollTimer = null; }
+}
+
+function buildInboxItem(conv) {
+  const item = el_("div", "inbox-item");
+
+  const nameRow = el_("div", "inbox-item__name");
+  nameRow.textContent = conv.shop_name;
+  const badge = el_("span", "stage-badge");
+  badge.textContent = conv.stage_label || conv.stage;
+  // Use the same color map as the leads panel
+  const STAGE_COLORS = {
+    cold: "#78716c", interested: "#3b82f6", negotiating: "#f59e0b",
+    closed: "#10b981", post_sale: "#8b5cf6", churned: "#ef4444",
+  };
+  badge.style.background = STAGE_COLORS[conv.stage] || "#78716c";
+  nameRow.appendChild(badge);
+
+  const preview = el_("div", "inbox-item__preview");
+  preview.textContent = conv.last_message || "(ไม่มีข้อความ)";
+
+  const meta = el_("div", "inbox-item__meta");
+  const dot = el_("span", `inbox-item__role-dot inbox-item__role-dot--${conv.last_role || "user"}`);
+  const time = el_("span", "inbox-item__time");
+  if (conv.last_contacted_at) {
+    const d = new Date(conv.last_contacted_at);
+    time.textContent = d.toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" });
+  }
+  const takeoverBtn = el_("button", "takeover-btn");
+  takeoverBtn.textContent = "รับช่วงต่อ";
+  takeoverBtn.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    takeoverBtn.disabled = true;
+    takeoverBtn.textContent = "...";
+    try {
+      await fetch(`/chatwoot/conversations/${conv.chatwoot_conversation_id}/takeover`, { method: "POST" });
+      takeoverBtn.textContent = "✓ รับแล้ว";
+    } catch (_) {
+      takeoverBtn.textContent = "รับช่วงต่อ";
+      takeoverBtn.disabled = false;
+    }
+  });
+  meta.appendChild(dot);
+  meta.appendChild(time);
+  meta.appendChild(takeoverBtn);
+
+  item.appendChild(nameRow);
+  item.appendChild(preview);
+  item.appendChild(meta);
+  return item;
 }
 
 async function loadLeads() {

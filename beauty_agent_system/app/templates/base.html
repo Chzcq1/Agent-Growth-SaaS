@@ -24,6 +24,7 @@
       <div class="sidebar__tabs" role="tablist">
         <button class="sidebar__tab sidebar__tab--active" data-tab="chats" role="tab" aria-selected="true">แชท</button>
         <button class="sidebar__tab" data-tab="leads" role="tab" aria-selected="false">ลีด</button>
+        <button class="sidebar__tab" data-tab="inbox" role="tab" aria-selected="false">กล่อง</button>
       </div>
 
       <!-- ── Conversations panel ────────────────────────────────────── -->
@@ -41,6 +42,17 @@
       <!-- ── Leads panel ────────────────────────────────────────────── -->
       <div id="leads-panel" class="sidebar__panel leads-panel">
         <div id="leads-list" class="leads-list">
+          <p class="leads-empty">กำลังโหลด...</p>
+        </div>
+      </div>
+
+      <!-- ── Inbox panel (Chatwoot live feed) ──────────────────────── -->
+      <div id="inbox-panel" class="sidebar__panel inbox-panel">
+        <div class="inbox-header">
+          <span>กล่องข้อความ AI</span>
+          <span id="inbox-status" class="inbox-status"></span>
+        </div>
+        <div id="inbox-list" class="inbox-list">
           <p class="leads-empty">กำลังโหลด...</p>
         </div>
       </div>

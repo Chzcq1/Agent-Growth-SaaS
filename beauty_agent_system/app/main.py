@@ -9,6 +9,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from app.routers import office
+from app.routers import chatwoot as chatwoot_router
 from app.scheduler import start_scheduler
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -41,6 +42,7 @@ app = FastAPI(title="CSC Virtual Office", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 app.include_router(office.router)
+app.include_router(chatwoot_router.router)
 
 
 @app.get("/healthz")

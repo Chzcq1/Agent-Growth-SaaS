@@ -1126,6 +1126,86 @@ details[open] .approvals-toggle { transform: rotate(90deg); }
 }
 .stage-select:focus { border-color: var(--accent); }
 
+/* ── Chatwoot inbox panel ────────────────────────────────────────────────── */
+.inbox-panel { display: none; flex-direction: column; }
+.sidebar__panel--active.inbox-panel { display: flex; }
+.inbox-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 14px 5px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--border);
+}
+.inbox-status {
+  font-size: 0.68rem;
+  font-weight: 400;
+  color: var(--muted);
+  text-transform: none;
+  letter-spacing: 0;
+}
+.inbox-list { overflow-y: auto; flex: 1; }
+
+.inbox-item {
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.inbox-item:hover { background: rgba(0,0,0,0.03); }
+.inbox-item__name {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 3px;
+}
+.inbox-item__name .stage-badge { font-size: 0.62rem; }
+.inbox-item__preview {
+  font-size: 0.75rem;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.inbox-item__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 4px;
+}
+.inbox-item__time {
+  font-size: 0.68rem;
+  color: var(--muted);
+}
+.inbox-item__role-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.inbox-item__role-dot--user      { background: #f59e0b; }
+.inbox-item__role-dot--assistant { background: #10b981; }
+.takeover-btn {
+  font-size: 0.68rem;
+  padding: 2px 7px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--muted);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.15s, color 0.15s;
+}
+.takeover-btn:hover { border-color: var(--accent); color: var(--accent); }
+
 /* ── Custom confirm modal ────────────────────────────────────────────────────── */
 .vo-modal-overlay {
   display: none;
