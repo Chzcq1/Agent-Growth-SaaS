@@ -45,7 +45,7 @@ from datetime import datetime, timezone, timedelta
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app import tiktok_client
+from app import tiktok_client, reply_templates
 from app.agents._json_utils import parse_json_object
 from app.agents.prompts import (
     TIKTOK_CLASSIFY_SYSTEM_PROMPT,
@@ -139,11 +139,23 @@ async def classify_and_generate(
     On LLM/parse failure returns classification = "_llm_error" — the caller
     MUST NOT mark the comment processed so the next scan can retry.
     """
+    # Load founder-configurable templates from DB (falls back to defaults)
+    tpls = reply_templates.get_all(db)
+    tpl_lines = [
+        "---",
+        "Template ที่ต้องใช้ (ปรับถ้อยคำให้เข้ากับคอมเมนต์ได้ แต่รักษาโครงสร้างไว้):",
+        f'buying_signal → comment_reply: "{tpls["reply_tpl_tt_buying_comment"]}"',
+    ]
+    hint = tpls.get("reply_tpl_tt_question_hint", "").strip()
+    if hint:
+        tpl_lines.append(f'question → สไตล์/แนวทาง: "{hint}"')
+    tpl_block = "\n".join(tpl_lines)
+
     user_prompt = TIKTOK_CLASSIFY_USER_TEMPLATE.format(
         commenter_name=commenter_name,
         comment_text=comment_text,
         thread_context="(ข้อความนี้เป็น reply ใน thread ต่อเนื่อง)" if is_threaded else "",
-    )
+    ) + "\n\n" + tpl_block
     try:
         raw = await call_llm(
             db,

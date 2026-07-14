@@ -28,7 +28,7 @@ import hashlib
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import facebook_client
+from app import facebook_client, reply_templates
 from app.agents._json_utils import parse_json_object
 from app.agents.prompts import (
     FACEBOOK_CLASSIFY_SYSTEM_PROMPT,
@@ -153,10 +153,23 @@ async def classify_and_generate(
           "reasoning":      str,
         }
     """
+    # Load founder-configurable templates from DB (falls back to defaults)
+    tpls = reply_templates.get_all(db)
+    tpl_lines = [
+        "---",
+        "Template ที่ต้องใช้ (ปรับถ้อยคำให้เข้ากับคอมเมนต์ได้ แต่รักษาโครงสร้างไว้):",
+        f'buying_signal → comment_reply: "{tpls["reply_tpl_fb_buying_comment"]}"',
+        f'buying_signal → dm_text: "{tpls["reply_tpl_fb_buying_dm"]}"',
+    ]
+    hint = tpls.get("reply_tpl_fb_question_hint", "").strip()
+    if hint:
+        tpl_lines.append(f'question → สไตล์/แนวทาง: "{hint}"')
+    tpl_block = "\n".join(tpl_lines)
+
     user_prompt = FACEBOOK_CLASSIFY_USER_TEMPLATE.format(
         commenter_name=commenter_name,
         comment_text=comment_text,
-    )
+    ) + "\n\n" + tpl_block
     try:
         raw = await call_llm(
             db,

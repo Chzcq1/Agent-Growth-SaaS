@@ -13,6 +13,7 @@ from app.routers import chatwoot as chatwoot_router
 from app.routers import facebook as facebook_router
 from app.routers import tiktok as tiktok_router
 from app.routers import activity as activity_router
+from app.routers import settings as settings_router
 from app.scheduler import start_scheduler
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -49,6 +50,7 @@ app.include_router(chatwoot_router.router)
 app.include_router(facebook_router.router)
 app.include_router(tiktok_router.router)
 app.include_router(activity_router.router)
+app.include_router(settings_router.router)
 
 
 @app.get("/healthz")

@@ -1,0 +1,260 @@
+{% extends "base.html" %}
+{% block title %}ตั้งค่าคำตอบบอท — CSC{% endblock %}
+
+{% block content %}
+<style>
+.settings-wrap {
+  max-width: 780px;
+  margin: 0 auto;
+  padding: 32px 24px 64px;
+}
+.settings-wrap h1 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin: 0 0 4px;
+}
+.settings-wrap .subtitle {
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin: 0 0 32px;
+}
+.settings-saved {
+  background: #d1fae5;
+  color: #065f46;
+  border: 1px solid #a7f3d0;
+  border-radius: 10px;
+  padding: 10px 16px;
+  margin-bottom: 24px;
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+.tpl-section {
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 22px 24px;
+  margin-bottom: 20px;
+}
+.tpl-section h2 {
+  font-size: 0.95rem;
+  font-weight: 700;
+  margin: 0 0 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.platform-badge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 20px;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.platform-badge--fb  { background: #dbeafe; color: #1e40af; }
+.platform-badge--tt  { background: #fce7f3; color: #9d174d; }
+.tpl-section .desc {
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin: 0 0 16px;
+  line-height: 1.5;
+}
+.tpl-field {
+  margin-bottom: 18px;
+}
+.tpl-field:last-child {
+  margin-bottom: 0;
+}
+.tpl-field label {
+  display: block;
+  font-size: 0.82rem;
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: var(--text);
+}
+.tpl-field .hint {
+  font-size: 0.76rem;
+  color: var(--muted);
+  margin-bottom: 6px;
+  line-height: 1.5;
+}
+.tpl-field textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  font-size: 0.85rem;
+  font-family: inherit;
+  line-height: 1.55;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  resize: vertical;
+  background: var(--input-bg, #fafafa);
+  color: var(--text);
+  transition: border-color .15s;
+}
+.tpl-field textarea:focus {
+  outline: none;
+  border-color: var(--accent, #6366f1);
+}
+.tpl-field textarea.optional {
+  background: var(--surface2, #f5f5f5);
+}
+.char-counter {
+  font-size: 0.72rem;
+  color: var(--muted);
+  text-align: right;
+  margin-top: 3px;
+}
+.char-counter.warn { color: #dc2626; }
+.save-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 24px;
+}
+.btn-save {
+  background: var(--accent, #6366f1);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  padding: 10px 24px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity .15s;
+}
+.btn-save:hover { opacity: .88; }
+.btn-reset {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 18px;
+  font-size: 0.85rem;
+  color: var(--muted);
+  cursor: pointer;
+}
+.note-link {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+</style>
+
+<div class="settings-wrap">
+  <h1>⚙️ ตั้งค่าคำตอบบอท</h1>
+  <p class="subtitle">บอทจะใช้ template ด้านล่างเป็นโครงสร้างคำตอบ — สามารถแก้ได้ตลอด บันทึกแล้วมีผลทันที (ไม่ต้อง restart)</p>
+
+  {% if request.query_params.get("saved") %}
+  <div class="settings-saved">✅ บันทึกเรียบร้อยแล้ว — บอทจะใช้ template ใหม่ในรอบต่อไปทันที</div>
+  {% endif %}
+
+  <form method="post" action="/settings">
+
+    <!-- ─── Facebook buying_signal ───────────────────────────────────────── -->
+    <div class="tpl-section">
+      <h2>
+        <span class="platform-badge platform-badge--fb">Facebook</span>
+        คนสนใจ / อยากซื้อ (buying signal)
+      </h2>
+      <p class="desc">เมื่อมีคนคอมเมนต์ว่าสนใจ ถามราคา หรือแสดงความต้องการซื้อ บอทจะตอบ 2 ช่องทางพร้อมกัน</p>
+
+      <div class="tpl-field">
+        <label>📢 ตอบสาธารณะ (ใต้คอมเมนต์)</label>
+        <div class="hint">คำตอบสั้นๆ ที่ทุกคนเห็น — แนะนำให้เชิญ DM ไม่เกิน 100 ตัวอักษร</div>
+        <textarea name="reply_tpl_fb_buying_comment" rows="2"
+          maxlength="200"
+          data-limit="100"
+          oninput="updateCounter(this)">{{ tpls.reply_tpl_fb_buying_comment }}</textarea>
+        <div class="char-counter" id="ctr-fb-buying-comment">{{ tpls.reply_tpl_fb_buying_comment | length }} / 100</div>
+      </div>
+
+      <div class="tpl-field">
+        <label>💬 DM ที่ส่งหาคนนั้นส่วนตัว</label>
+        <div class="hint">
+          ข้อความที่บอทส่ง DM ไปหาเลย — ใช้ <code>{name}</code> เพื่อแทรกชื่อคนคอมเมนต์ ไม่เกิน 300 ตัวอักษร<br>
+          ควรมีลิงก์ <code>https://nail-salon-booking-5cbr.onrender.com/register</code> อยู่ด้วย
+        </div>
+        <textarea name="reply_tpl_fb_buying_dm" rows="5"
+          maxlength="500"
+          data-limit="300"
+          oninput="updateCounter(this)">{{ tpls.reply_tpl_fb_buying_dm }}</textarea>
+        <div class="char-counter" id="ctr-fb-buying-dm">{{ tpls.reply_tpl_fb_buying_dm | length }} / 300</div>
+      </div>
+    </div>
+
+    <!-- ─── Facebook question ────────────────────────────────────────────── -->
+    <div class="tpl-section">
+      <h2>
+        <span class="platform-badge platform-badge--fb">Facebook</span>
+        คำถามทั่วไป (question)
+      </h2>
+      <p class="desc">เมื่อมีคนถามข้อมูลเช่น เวลาเปิดร้าน วิธีจอง โปรโมชั่น — บอทจะตอบตามเนื้อหาคำถาม คุณระบุ <strong>โทนหรือสไตล์</strong> เพิ่มเติมได้ (เว้นว่างได้ถ้าให้บอทตัดสินใจเอง)</p>
+
+      <div class="tpl-field">
+        <label>💡 สไตล์/แนวทางตอบคำถาม <em style="font-weight:400;color:var(--muted)">(ไม่บังคับ)</em></label>
+        <div class="hint">เช่น "ตอบสั้น ไม่เกิน 2 ประโยค เป็นกันเอง" หรือ "ถ้าไม่รู้คำตอบให้บอกให้ทัก DM มา"</div>
+        <textarea name="reply_tpl_fb_question_hint" rows="2"
+          class="optional"
+          placeholder="เว้นว่างไว้ = ให้บอทตัดสินใจเอง">{{ tpls.reply_tpl_fb_question_hint }}</textarea>
+      </div>
+    </div>
+
+    <!-- ─── TikTok buying_signal ─────────────────────────────────────────── -->
+    <div class="tpl-section">
+      <h2>
+        <span class="platform-badge platform-badge--tt">TikTok</span>
+        คนสนใจ / อยากซื้อ (buying signal)
+      </h2>
+      <p class="desc">TikTok ไม่รองรับ DM อัตโนมัติ — บอทจะแนบลิงก์สมัครตรงใน comment reply ไม่เกิน 150 ตัวอักษร</p>
+
+      <div class="tpl-field">
+        <label>💬 ตอบใต้คอมเมนต์ (พร้อมลิงก์สมัคร)</label>
+        <div class="hint">
+          ควรมีลิงก์ <code>https://nail-salon-booking-5cbr.onrender.com/register</code> อยู่ด้วย — ไม่เกิน 150 ตัวอักษร
+        </div>
+        <textarea name="reply_tpl_tt_buying_comment" rows="3"
+          maxlength="300"
+          data-limit="150"
+          oninput="updateCounter(this)">{{ tpls.reply_tpl_tt_buying_comment }}</textarea>
+        <div class="char-counter" id="ctr-tt-buying-comment">{{ tpls.reply_tpl_tt_buying_comment | length }} / 150</div>
+      </div>
+    </div>
+
+    <!-- ─── TikTok question ──────────────────────────────────────────────── -->
+    <div class="tpl-section">
+      <h2>
+        <span class="platform-badge platform-badge--tt">TikTok</span>
+        คำถามทั่วไป (question)
+      </h2>
+      <p class="desc">บอทจะตอบตามเนื้อหาคำถาม คุณระบุโทนหรือสไตล์เพิ่มได้ (เว้นว่างได้)</p>
+
+      <div class="tpl-field">
+        <label>💡 สไตล์/แนวทางตอบ <em style="font-weight:400;color:var(--muted)">(ไม่บังคับ)</em></label>
+        <div class="hint">เช่น "ใช้ภาษาวัยรุ่น emoji เยอะๆ" หรือ "ตอบสั้น 1 ประโยค แล้วชวน DM Facebook มา"</div>
+        <textarea name="reply_tpl_tt_question_hint" rows="2"
+          class="optional"
+          placeholder="เว้นว่างไว้ = ให้บอทตัดสินใจเอง">{{ tpls.reply_tpl_tt_question_hint }}</textarea>
+      </div>
+    </div>
+
+    <div class="save-row">
+      <button type="submit" class="btn-save">💾 บันทึกการตั้งค่า</button>
+      <a href="/" class="note-link">← กลับหน้าหลัก</a>
+    </div>
+  </form>
+</div>
+
+<script>
+function updateCounter(el) {
+  const limit = parseInt(el.dataset.limit || "0");
+  if (!limit) return;
+  const len = el.value.length;
+  // find counter by position (next sibling with class char-counter)
+  const counter = el.parentElement.querySelector(".char-counter");
+  if (!counter) return;
+  counter.textContent = len + " / " + limit;
+  counter.classList.toggle("warn", len > limit);
+}
+// Init counters on load
+document.querySelectorAll("textarea[data-limit]").forEach(updateCounter);
+</script>
+{% endblock %}
