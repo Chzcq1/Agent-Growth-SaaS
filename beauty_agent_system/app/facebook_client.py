@@ -20,6 +20,8 @@ Messenger Send API:       https://developers.facebook.com/docs/messenger-platfor
 """
 from __future__ import annotations
 
+import hashlib
+import hmac
 import logging
 from datetime import datetime, timezone
 
@@ -189,6 +191,26 @@ async def send_dm(psid: str, message: str) -> dict:
         )
         resp.raise_for_status()
         return resp.json()
+
+
+# ── Webhook signature verification ───────────────────────────────────────────
+
+def verify_webhook_signature(raw_body: bytes, signature_header: str | None) -> bool:
+    """Verify Meta's X-Hub-Signature-256 header against the raw request body.
+
+    Meta signs every webhook POST with HMAC-SHA256 using the App Secret.
+    Returns True (accepts unsigned bodies) only when no app secret is
+    configured yet -- e.g. before the founder has copied it in -- so local
+    testing isn't blocked, but this must never be true once configured.
+    """
+    secret = get_settings().facebook_app_secret
+    if not secret:
+        return True
+    if not signature_header or not signature_header.startswith("sha256="):
+        return False
+    expected = hmac.new(secret.encode(), raw_body, hashlib.sha256).hexdigest()
+    provided = signature_header.removeprefix("sha256=")
+    return hmac.compare_digest(expected, provided)
 
 
 # ── Timestamp helpers ─────────────────────────────────────────────────────────

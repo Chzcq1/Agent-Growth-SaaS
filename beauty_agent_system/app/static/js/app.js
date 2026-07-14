@@ -188,7 +188,7 @@ function initSidebarTabs() {
         if (panel) panel.classList.toggle("sidebar__panel--active", key === target);
       });
       if (target === "leads") loadLeads();
-      if (target === "facebook") loadFacebookLeads();
+      if (target === "facebook") { loadFacebookLeads(); loadPendingDMs(); }
       if (target === "tiktok") loadTikTokLeads();
       if (target === "inbox") {
         loadInbox();
@@ -346,6 +346,93 @@ function buildLeadItem(lead) {
   item.appendChild(name);
   item.appendChild(footer);
   return item;
+}
+
+// ─── Facebook DM founder-review queue (AI wasn't confident enough) ────────────
+async function loadPendingDMs() {
+  const list = document.getElementById("facebook-dm-list");
+  const status = document.getElementById("facebook-dm-status");
+  if (!list) return;
+  try {
+    const resp = await fetch("/facebook/dm/pending");
+    if (!resp.ok) throw new Error(resp.statusText);
+    const items = await resp.json();
+    if (!items.length) {
+      list.innerHTML = '<p class="leads-empty">ไม่มีข้อความรอตอบ</p>';
+      if (status) status.textContent = "";
+      return;
+    }
+    if (status) status.textContent = `${items.length} รายการ`;
+    list.innerHTML = "";
+    items.forEach((item) => list.appendChild(buildPendingDmItem(item)));
+  } catch (e) {
+    list.innerHTML = `<p class="leads-empty">โหลดไม่ได้: ${e.message}</p>`;
+  }
+}
+
+function buildPendingDmItem(item) {
+  const wrap = el_("div", "fb-dm-item");
+
+  const name = el_("div", "fb-dm-item__name");
+  name.textContent = item.shop_name;
+  wrap.appendChild(name);
+
+  if (item.reasoning) {
+    const reasoning = el_("div", "fb-dm-item__reasoning");
+    reasoning.textContent = item.reasoning;
+    wrap.appendChild(reasoning);
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.className = "fb-dm-item__textarea";
+  textarea.value = item.draft_message || "";
+  textarea.placeholder = "พิมพ์คำตอบที่จะส่งให้ลูกค้า...";
+  wrap.appendChild(textarea);
+
+  const actions = el_("div", "fb-dm-item__actions");
+  const sendBtn = el_("button", "fb-dm-item__send");
+  sendBtn.textContent = "ส่ง";
+  const dismissBtn = el_("button", "fb-dm-item__dismiss");
+  dismissBtn.textContent = "ข้าม (จะตอบเองนอกระบบ)";
+
+  sendBtn.addEventListener("click", async () => {
+    const message = textarea.value.trim();
+    if (!message) return;
+    sendBtn.disabled = true;
+    dismissBtn.disabled = true;
+    sendBtn.textContent = "กำลังส่ง...";
+    try {
+      const body = new URLSearchParams({ message });
+      const resp = await fetch(`/facebook/dm/${item.id}/send`, { method: "POST", body });
+      if (!resp.ok) throw new Error((await resp.json()).detail || resp.statusText);
+      wrap.remove();
+      loadPendingDMs();
+    } catch (e) {
+      alert(`ส่งไม่สำเร็จ: ${e.message}`);
+      sendBtn.disabled = false;
+      dismissBtn.disabled = false;
+      sendBtn.textContent = "ส่ง";
+    }
+  });
+
+  dismissBtn.addEventListener("click", async () => {
+    dismissBtn.disabled = true;
+    sendBtn.disabled = true;
+    try {
+      await fetch(`/facebook/dm/${item.id}/dismiss`, { method: "POST" });
+      wrap.remove();
+      loadPendingDMs();
+    } catch (e) {
+      alert(`ทำรายการไม่สำเร็จ: ${e.message}`);
+      dismissBtn.disabled = false;
+      sendBtn.disabled = false;
+    }
+  });
+
+  actions.appendChild(sendBtn);
+  actions.appendChild(dismissBtn);
+  wrap.appendChild(actions);
+  return wrap;
 }
 
 // ─── Facebook prospecting log ──────────────────────────────────────────────────

@@ -36,8 +36,36 @@ Set these in Replit Secrets (already configured):
 |--------|---------|
 | `NEON_DATABASE_URL` | Neon Postgres connection string |
 | `GITHUB_MODELS_TOKEN` | GitHub fine-grained PAT with "Models" permission |
+| `FACEBOOK_APP_SECRET` | Meta App secret — verifies the `X-Hub-Signature-256` header on incoming webhook calls |
+
+Plus one plain env var: `FACEBOOK_WEBHOOK_VERIFY_TOKEN` — an arbitrary shared string that must match the "Verify Token" entered in Meta's webhook setup screen (a value has already been generated and set here; reuse the same value in Meta's dashboard).
 
 Without `NEON_DATABASE_URL` the app falls back to a local SQLite file and creates all tables automatically — useful for dev/testing.
+
+## Facebook Messenger DM auto-reply + real-time webhook
+
+The bot now replies to Messenger DMs, not just public comments, and reacts to
+Facebook events in real time via a webhook instead of relying only on a
+5-minute poll (which never fires while a free-tier Render dyno is asleep).
+
+- `POST /facebook/webhook` — receives Meta's push events. New DM → AI drafts
+  a reply; if confident, sends it immediately; if not, holds it for founder
+  review (see below). New Page comment → immediately re-runs the same
+  classify/reply job the 5-minute poller uses, instead of waiting.
+- `GET /facebook/webhook` — Meta's one-time verification handshake.
+- The 5-minute poller (`app/scheduler.py`) still runs as a safety net in
+  case a webhook event is ever missed.
+- Founder review queue: DMs the AI wasn't confident enough to send land in
+  the sidebar **Facebook** panel ("รอตอบ DM") with an editable draft, a
+  "ส่ง" button (sends via Messenger) and "ข้าม" (dismiss, founder replies
+  manually outside the app). Logic lives in `app/facebook_dm_pipeline.py`,
+  reusing the same confidence-threshold prompt as `app/chatwoot_pipeline.py`.
+- **To activate in production**: in the Meta App dashboard, add a webhook
+  subscription pointing to `https://<your-render-domain>/facebook/webhook`,
+  enter the `FACEBOOK_WEBHOOK_VERIFY_TOKEN` value as the Verify Token, and
+  subscribe the Page to the `messages` and `feed` fields. Requires the
+  `pages_messaging` permission (already needed for the existing DM-on-comment
+  feature).
 
 ## Architecture
 

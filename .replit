@@ -48,3 +48,4 @@ packages = ["libxcrypt"]
 
 [userenv.shared]
 FACEBOOK_ENABLED = "true"
+FACEBOOK_WEBHOOK_VERIFY_TOKEN = "71e72c0407d729159ef74f5a673aef672cab0e4f5a6e0d2d"

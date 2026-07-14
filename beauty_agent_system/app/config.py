@@ -62,7 +62,9 @@ class Settings(BaseSettings):
     facebook_page_id: str = ""
     facebook_page_access_token: str = ""
     facebook_dm_hourly_limit: int = 20   # max DMs per rolling 60-min window
-    facebook_poll_interval_minutes: int = 5  # how often to scan for new comments
+    facebook_poll_interval_minutes: int = 5  # how often to scan for new comments (fallback safety net; the webhook below reacts in real time)
+    facebook_app_secret: str = ""             # Meta App secret -- verifies X-Hub-Signature-256 on webhook payloads
+    facebook_webhook_verify_token: str = ""   # arbitrary string, must match the "Verify Token" entered in Meta's webhook setup
 
     # --- App ---------------------------------------------------------------
     admin_session_secret: str = "dev-only-change-me"
