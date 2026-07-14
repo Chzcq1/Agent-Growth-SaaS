@@ -33,15 +33,57 @@ GRAPH_BASE = "https://graph.facebook.com/v20.0"
 
 _STUB = {"stub": True, "delivered": False, "note": "Facebook not configured yet"}
 
+# Cache for the resolved Page-scoped access token (see _resolve_page_token below).
+# Keyed by the configured token so a credential rotation invalidates the cache.
+_resolved_token_cache: dict[str, str] = {}
+
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
 
-def _token() -> str:
-    return get_settings().facebook_page_access_token
-
-
 def _enabled() -> bool:
     return get_settings().facebook_enabled
+
+
+async def _resolve_page_token() -> str:
+    """Return a Page-scoped access token usable for Page API calls.
+
+    Meta issues several token "shapes" depending on how it was generated:
+    a User token, a Business System User token, or a genuine Page token.
+    Pages migrated to Meta's "New Pages Experience" reject the first two for
+    Page-level calls (error code 190 / subcode 2069032) — only a true Page
+    token works. Since a System User/User token can list every Page it has
+    access to via ``/me/accounts`` (each entry embeds that Page's own token),
+    we resolve the real Page token once per configured credential and cache
+    it, instead of requiring the operator to manually extract it.
+    """
+    configured = get_settings().facebook_page_access_token
+    page_id = get_settings().facebook_page_id
+
+    cached = _resolved_token_cache.get(configured)
+    if cached:
+        return cached
+
+    resolved = configured  # fall back to the configured token as-is
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(
+                f"{GRAPH_BASE}/me/accounts",
+                params={"access_token": configured, "fields": "id,access_token"},
+            )
+            resp.raise_for_status()
+            for page in resp.json().get("data", []):
+                if page.get("id") == page_id and page.get("access_token"):
+                    resolved = page["access_token"]
+                    break
+    except httpx.HTTPError:
+        logger.warning(
+            "Could not resolve a Page-scoped token via /me/accounts; "
+            "using the configured token as-is.",
+            exc_info=True,
+        )
+
+    _resolved_token_cache[configured] = resolved
+    return resolved
 
 
 # ── Posts ─────────────────────────────────────────────────────────────────────
@@ -61,7 +103,7 @@ async def list_recent_posts(
 
     page_id = get_settings().facebook_page_id
     params: dict = {
-        "access_token": _token(),
+        "access_token": await _resolve_page_token(),
         "fields": "id,message,created_time",
         "limit": limit,
     }
@@ -90,7 +132,7 @@ async def list_comments(
         return []
 
     params: dict = {
-        "access_token": _token(),
+        "access_token": await _resolve_page_token(),
         "fields": "id,message,from,created_time",
         "filter": "stream",
         "limit": 100,
@@ -115,7 +157,7 @@ async def post_comment_reply(comment_id: str, message: str) -> dict:
     async with httpx.AsyncClient(timeout=15) as client:
         resp = await client.post(
             f"{GRAPH_BASE}/{comment_id}/comments",
-            params={"access_token": _token()},
+            params={"access_token": await _resolve_page_token()},
             json={"message": message},
         )
         resp.raise_for_status()
@@ -138,7 +180,7 @@ async def send_dm(psid: str, message: str) -> dict:
     async with httpx.AsyncClient(timeout=15) as client:
         resp = await client.post(
             f"{GRAPH_BASE}/{page_id}/messages",
-            params={"access_token": _token()},
+            params={"access_token": await _resolve_page_token()},
             json={
                 "recipient": {"id": psid},
                 "message": {"text": message},
