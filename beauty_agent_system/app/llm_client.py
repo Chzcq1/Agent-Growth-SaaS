@@ -112,3 +112,68 @@ async def call_llm(
             rate_limiter.release()
 
     raise LLMUnavailable("exhausted retries without a response")
+
+
+async def call_llm_stream(
+    db: Session,
+    agent_name: str,
+    system_prompt: str,
+    user_prompt: str,
+    *,
+    temperature: float = 0.4,
+    image_data_urls: list[str] | None = None,
+):
+    """Streaming variant of call_llm — yields text chunks as the LLM produces
+    them.  Use only for plain-text responses (not JSON agents) since partial
+    JSON can't be parsed mid-stream.
+
+    Raises ``LLMUnavailable`` before yielding anything if the bot is asleep
+    or the API key is missing.  Rate-limit accounting mirrors call_llm.
+    """
+    settings = get_settings()
+    if not settings.github_models_token:
+        raise LLMUnavailable("GITHUB_MODELS_TOKEN is not configured")
+
+    try:
+        rate_limiter.ensure_awake(db)
+    except RateLimitSleeping as exc:
+        raise LLMUnavailable(f"bot is sleeping until {exc.wake_at.isoformat()}") from exc
+
+    client = _client(settings)
+    await rate_limiter.acquire(db)
+    total_chunks = 0
+    try:
+        stream = await client.chat.completions.create(
+            model=settings.github_models_model,
+            temperature=temperature,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": _user_content(user_prompt, image_data_urls)},
+            ],
+            stream=True,
+        )
+        async for chunk in stream:
+            delta = chunk.choices[0].delta.content if chunk.choices else None
+            if delta:
+                total_chunks += 1
+                yield delta
+        rate_limiter.record_success(db, agent_name, settings.github_models_model, total_chunks)
+    except APIStatusError as exc:
+        if exc.status_code == 429:
+            retry_after = None
+            header_val = exc.response.headers.get("retry-after") if exc.response else None
+            if header_val:
+                try:
+                    retry_after = float(header_val)
+                except ValueError:
+                    pass
+            wake_at = rate_limiter.record_rate_limited(db, agent_name, settings.github_models_model, retry_after)
+            logger.warning("GitHub Models 429 (stream) -- sleeping until %s", wake_at.isoformat())
+            raise LLMUnavailable(f"rate limited, sleeping until {wake_at.isoformat()}") from exc
+        rate_limiter.record_error(db, agent_name, settings.github_models_model, str(exc))
+        raise LLMUnavailable(f"GitHub Models error: {exc}") from exc
+    except Exception as exc:  # noqa: BLE001
+        rate_limiter.record_error(db, agent_name, settings.github_models_model, str(exc))
+        raise LLMUnavailable(f"error during stream: {exc}") from exc
+    finally:
+        rate_limiter.release()

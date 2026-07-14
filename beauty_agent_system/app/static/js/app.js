@@ -39,6 +39,8 @@ const AGENT_ICONS = {
 
 let currentRunId = null; // run_id of the in-flight SSE run, once known
 let pendingImages = []; // [{ url, file }] attached to the message about to be sent
+let _liveCard = null;  // the streaming-token card shown while GA is typing
+let _liveTextEl = null; // <p> inside _liveCard that receives tokens
 
 document.addEventListener("DOMContentLoaded", () => {
   const form = document.getElementById("office-form");
@@ -304,6 +306,7 @@ function handleEvent(ev) {
     case "planning":   hideThinkingCloud(); updateProgressAgents(ev.plan_trace?.assignments || []); break;
     case "agent_start": markAgentTyping(ev.agent); break;
     case "agent_done": markAgentDone(ev.agent); renderInterimAgentCard(ev); break;
+    case "token":      appendToken(ev.text || ""); break;
     case "final":      onFinal(ev); break;
     case "error":      appendToThread(errorBanner(ev.message)); break;
   }
@@ -407,8 +410,29 @@ function appendUserBubble(text, imageUrls = []) {
   appendToThread(bubble);
 }
 
+// ─── Token streaming (general_assistant streams plain text live) ──────────────
+function appendToken(text) {
+  if (!_liveCard) {
+    _liveCard = el_("div", "result-card result-card--live");
+    _liveTextEl = el_("p", "live-answer-text");
+    _liveCard.appendChild(_liveTextEl);
+    appendToThread(_liveCard);
+  }
+  _liveTextEl.textContent += text;
+  scrollChatToBottom();
+}
+
+function clearLiveCard() {
+  if (_liveCard) {
+    _liveCard.remove();
+    _liveCard = null;
+    _liveTextEl = null;
+  }
+}
+
 function onFinal(ev) {
   currentRunId = ev.run_id;
+  clearLiveCard();
   clearInterimAgentCards();
   appendRunToThread(ev, { live: true });
 }

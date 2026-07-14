@@ -20,7 +20,7 @@ from app.agents.prompts import (
     GENERAL_ASSISTANT_USER_TEMPLATE,
     REWORK_FEEDBACK_TEMPLATE,
 )
-from app.llm_client import LLMUnavailable, call_llm
+from app.llm_client import LLMUnavailable, call_llm, call_llm_stream
 
 AGENT_NAME = "general_assistant"
 LABEL_TH = "ผู้ช่วยทั่วไป (General Assistant)"
@@ -103,3 +103,52 @@ async def run(
         "draft_reasoning": None,
         "answer_text": answer.strip(),
     }
+
+
+def _empty_result(error_msg: str) -> dict:
+    return {
+        "agent_name": AGENT_NAME, "label_th": LABEL_TH,
+        "key_findings": [], "content_ideas": [], "founder_actions": [], "ai_actions": [],
+        "missing_info": [error_msg], "clarifying_question": None, "observations": [],
+        "thinking": None, "draft_message": None, "draft_reasoning": None, "answer_text": None,
+    }
+
+
+async def run_stream(
+    db: Session,
+    raw_text: str,
+    *,
+    image_urls: list[str] | None = None,
+):
+    """Async generator — streams the plain-text answer token by token.
+
+    Yields ``(chunk: str, result: None)`` for each token chunk, then
+    ``(None, result: dict)`` as the very last item once the LLM is done.
+    The caller (supervisor) forwards chunk events to SSE and uses the final
+    result dict to build the OfficeRun record.
+    """
+    user_prompt = GENERAL_ASSISTANT_USER_TEMPLATE.format(
+        raw_text=raw_text or "(ไม่มีข้อความ ดูจากรูปที่แนบมาแทน)"
+    )
+    data_urls = [u for u in (_to_data_url(p) for p in (image_urls or [])) if u]
+
+    accumulated: list[str] = []
+    try:
+        async for chunk in call_llm_stream(
+            db, AGENT_NAME, GENERAL_ASSISTANT_SYSTEM_PROMPT, user_prompt,
+            image_data_urls=data_urls or None,
+        ):
+            accumulated.append(chunk)
+            yield (chunk, None)
+    except LLMUnavailable as exc:
+        yield (None, _empty_result(f"AI ไม่พร้อมใช้งาน: {exc}"))
+        return
+
+    answer = "".join(accumulated).strip()
+    yield (None, {
+        "agent_name": AGENT_NAME, "label_th": LABEL_TH,
+        "key_findings": [], "content_ideas": [], "founder_actions": [], "ai_actions": [],
+        "missing_info": [], "clarifying_question": None, "observations": [],
+        "thinking": None, "draft_message": None, "draft_reasoning": None,
+        "answer_text": answer,
+    })

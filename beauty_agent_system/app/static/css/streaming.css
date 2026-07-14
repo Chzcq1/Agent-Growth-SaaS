@@ -1017,6 +1017,33 @@ details[open] .approvals-toggle { transform: rotate(90deg); }
 }
 .feedback-row__note { font-size: 0.79rem; color: var(--muted); font-style: italic; }
 
+/* ── Live token-streaming card (general_assistant streams plain text) ─────── */
+.result-card--live {
+  border-left: 3px solid var(--accent);
+  background: #fefcf9;
+  min-height: 48px;
+}
+.live-answer-text {
+  font-size: 0.92rem;
+  color: var(--ink);
+  line-height: 1.65;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+/* blinking cursor shown after the last character while streaming */
+.live-answer-text::after {
+  content: "▋";
+  display: inline-block;
+  color: var(--accent);
+  animation: live-blink 0.9s step-end infinite;
+  margin-left: 1px;
+}
+@keyframes live-blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
+
 /* ── Custom confirm modal ────────────────────────────────────────────────────── */
 .vo-modal-overlay {
   display: none;

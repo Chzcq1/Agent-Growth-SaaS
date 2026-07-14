@@ -18,10 +18,12 @@ logger = logging.getLogger("beauty_agent_system.content_strategist")
 LABEL_TH = "นักวางแผนคอนเทนต์ (Content Strategist)"
 
 _KEYWORDS = [
-    "โพสต์", "กลุ่ม", "คอนเทนต์", "content", "แผน", "วางแผน",
-    "facebook", "ลีด", "สนใจ", "ทัก", "ขาย", "marketing", "มาร์เก็ต",
-    "ประชาสัมพันธ์", "โปรโมท", "promotion", "ตลาด", "กลยุทธ์",
-    "ปิดการขาย", "คอมเมนต์", "engagement", "ฟีด", "reach",
+    # เฉพาะ keyword ที่บ่งบอกว่า Founder ต้องการวางแผนคอนเทนต์จริงๆ
+    # ห้ามใส่ keyword กว้างๆ ที่แชร์กับ sales_assistant/lead_hunter
+    "โพสต์", "คอนเทนต์", "content", "วางแผนคอนเทนต์", "แผนโพสต์",
+    "facebook", "marketing", "มาร์เก็ต", "ประชาสัมพันธ์",
+    "โปรโมท", "promotion", "กลยุทธ์คอนเทนต์", "engagement",
+    "ฟีด", "reach", "caption", "ไอเดียโพสต์", "สร้างคอนเทนต์",
 ]
 
 

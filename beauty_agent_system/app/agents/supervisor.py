@@ -468,17 +468,26 @@ async def stream_run_office(db: Session, raw_text: str, *, conversation_id: int 
     }
     yield {"type": "planning", "plan_trace": plan_trace, "selected": selected}
 
-    # ── Stage 1: dispatch all agents concurrently ────────────────────────
-    # Signal every agent is starting (they all kick off simultaneously)
-    for name in selected:
+    # ── Stage 1: dispatch agents ──────────────────────────────────────────
+    # general_assistant gets a special streaming path so the founder sees
+    # its plain-text answer arriving token by token instead of all at once.
+    # All other agents (JSON-returning) run concurrently first, then GA
+    # streams last.  Because the rate-limiter semaphore serialises calls
+    # anyway this doesn't increase total latency but dramatically improves
+    # perceived responsiveness.
+    ga_selected = "general_assistant" in selected
+    other_agents = [n for n in selected if n != "general_assistant"]
+
+    # Signal start for all non-GA agents up front
+    for name in other_agents:
         yield {"type": "agent_start", "agent": name,
                "label": AGENT_MODULES[name].LABEL_TH,
                "emoji": AGENT_EMOJI.get(name, "🤖")}
 
-    # Create asyncio Tasks so we can await them with asyncio.wait
+    # Run non-GA agents concurrently (rate-limiter serialises internally)
     name_to_task = {
         name: asyncio.create_task(_run_agent(name, db, raw_text, image_urls=image_urls))
-        for name in selected
+        for name in other_agents
     }
     task_to_name = {v: k for k, v in name_to_task.items()}
     pending = set(name_to_task.values())
@@ -507,6 +516,40 @@ async def stream_run_office(db: Session, raw_text: str, *, conversation_id: int 
                 "draft_message": result.get("draft_message"),
                 "answer_text": result.get("answer_text"),
             }
+
+    # ── general_assistant: stream tokens live ────────────────────────────
+    if ga_selected:
+        yield {"type": "agent_start", "agent": "general_assistant",
+               "label": AGENT_MODULES["general_assistant"].LABEL_TH,
+               "emoji": AGENT_EMOJI.get("general_assistant", "🤖")}
+        ga_result: dict = {}
+        try:
+            async for chunk, result in general_assistant.run_stream(
+                db, raw_text, image_urls=image_urls
+            ):
+                if chunk is not None:
+                    yield {"type": "token", "text": chunk}
+                else:
+                    ga_result = result or {}
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("general_assistant stream raised: %s", exc)
+            ga_result = empty_result(
+                "general_assistant", AGENT_MODULES["general_assistant"].LABEL_TH,
+                missing_info=[f"ข้อผิดพลาด: {exc}"]
+            )
+        results_by_agent["general_assistant"] = ga_result
+        yield {
+            "type": "agent_done",
+            "agent": "general_assistant",
+            "label": ga_result.get("label_th", AGENT_MODULES["general_assistant"].LABEL_TH),
+            "emoji": AGENT_EMOJI.get("general_assistant", "🤖"),
+            "thinking": ga_result.get("thinking"),
+            "findings": ga_result.get("key_findings") or [],
+            "question": ga_result.get("clarifying_question"),
+            "observations": ga_result.get("observations") or [],
+            "draft_message": ga_result.get("draft_message"),
+            "answer_text": ga_result.get("answer_text"),
+        }
 
     # ── Stage 2: QA review + rework (silent — no UI events) ─────────────
     # Skipped for a pure general_assistant reply -- a freeform chat answer
