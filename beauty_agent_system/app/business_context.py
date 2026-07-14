@@ -65,5 +65,5 @@ AGENT_TASK_TH = {
     "onboarding_agent": "หาจุดที่ร้านใหม่ติดขัดระหว่างตั้งค่า/ยืนยันตัวตน/เริ่มใช้งานจริง",
     "customer_success_agent": "เช็กร้านที่ใช้งานอยู่ว่ามีการจองจริงหรือมีสัญญาณเสี่ยงเลิกใช้",
     "product_analyst_agent": "จัดกลุ่ม Feedback เป็นข้อเสนอ Roadmap ในขอบเขต Booking/Deposit/Schedule/Customer Flow เท่านั้น",
-    "content_strategist": "วางแผนคอนเทนต์ Facebook step-by-step — กลุ่มไหน คำพูดยังไง รูปแบบไหน DM ยังไง เสนอขายตอนไหน",
+    "content_strategist": "วางแผนหากลุ่มเป้าหมายและคอนเทนต์บน Facebook + TikTok step-by-step — สอดส่องกลุ่ม/แฮชแท็กไหน คำพูดยังไง รูปแบบไหน DM ยังไง เสนอขายตอนไหน ปิดการขายยังไง",
 }

@@ -1,4 +1,4 @@
-"""Content Strategist Agent — วางแผนคอนเทนต์ Facebook แบบครบวงจร step-by-step."""
+"""Content Strategist Agent — วางแผนหากลุ่มเป้าหมาย+คอนเทนต์ Facebook/TikTok แบบครบวงจร step-by-step."""
 from __future__ import annotations
 
 import logging
@@ -18,12 +18,14 @@ logger = logging.getLogger("beauty_agent_system.content_strategist")
 LABEL_TH = "นักวางแผนคอนเทนต์ (Content Strategist)"
 
 _KEYWORDS = [
-    # เฉพาะ keyword ที่บ่งบอกว่า Founder ต้องการวางแผนคอนเทนต์จริงๆ
+    # เฉพาะ keyword ที่บ่งบอกว่า Founder ต้องการวางแผนคอนเทนต์/หากลุ่มเป้าหมายจริงๆ
     # ห้ามใส่ keyword กว้างๆ ที่แชร์กับ sales_assistant/lead_hunter
     "โพสต์", "คอนเทนต์", "content", "วางแผนคอนเทนต์", "แผนโพสต์",
     "facebook", "marketing", "มาร์เก็ต", "ประชาสัมพันธ์",
     "โปรโมท", "promotion", "กลยุทธ์คอนเทนต์", "engagement",
     "ฟีด", "reach", "caption", "ไอเดียโพสต์", "สร้างคอนเทนต์",
+    "tiktok", "ติ๊กต็อก", "ติ้กต๊อก", "คลิป", "แฮชแท็ก", "hashtag",
+    "สอดส่อง", "หากลุ่มเป้าหมาย", "ระบุกลุ่มเป้าหมาย", "ปิดการขาย",
 ]
 
 

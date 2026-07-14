@@ -58,7 +58,7 @@ Founder pastes text → Supervisor selects relevant agents (0–8) →
 | `onboarding_agent` | `onboarding_agent.py` | Flags setup / verification issues |
 | `customer_success_agent` | `customer_success_agent.py` | Churn-risk signals for live shops |
 | `product_analyst_agent` | `product_analyst_agent.py` | Groups feedback into a roadmap note |
-| `content_strategist` | `content_strategist_agent.py` | Step-by-step Facebook content plan |
+| `content_strategist` | `content_strategist_agent.py` | Step-by-step target-audience scouting + content plan on Facebook and TikTok, through to closing the sale |
 | `general_assistant` | `general_assistant.py` | Fallback for anything outside the above; also handles attached images |
 
 ### Key files

@@ -2,3 +2,4 @@
 - [Starlette Jinja2Templates new signature](starlette-jinja2templates-signature.md) — newer starlette requires `TemplateResponse(request, name, context)`; old `(name, {"request":...})` fails with a confusing jinja2 cache TypeError.
 - [SQLAlchemy Python str-Enum pitfalls](sqlalchemy-str-enum-pitfalls.md) — native Postgres ENUM stores member name unless `values_callable` is set; pre-creating the type separately then using it in create_table double-creates it.
 - [Multi-agent synthesis without an LLM merge step](virtual-office-agent-synthesis.md) — merge worker-agent JSON outputs in plain Python; keyword-heuristic routing first, LLM classification only as fallback.
+- [Beauty Agent System testing notes](beauty-agent-system-testing.md) — rate-limiter "sleep mode" can look like a broken prompt when testing; FB/TikTok scanning infra already exists separately from content_strategist.
